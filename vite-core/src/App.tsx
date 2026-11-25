@@ -1311,7 +1311,6 @@ function App() {
   }, []);
 
   if (showSplash) {
-    // Check for custom splash image
     const customSplashImage = localStorage.getItem('splashImage');
     
     if (customSplashImage) {
@@ -1327,50 +1326,41 @@ function App() {
             <img src="./icon.png" alt="" className="mx-auto mb-6 h-24 w-24 rounded-2xl object-contain" />
           <h1 className="text-6xl font-bold text-white mb-4">MediaGuy</h1>
           <p className="text-xl text-white opacity-80">
-            Developed by Positive Developer (Mr Positive)
+            Live event tools for your team
           </p>
           </div>
         </div>
       );
     }
 
-    // Default gradient splash screen
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex flex-col items-center justify-center overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-          <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-          <div className="absolute -bottom-8 left-1/3 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+      <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#101722] text-white">
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-700 bg-[#17212e] px-5">
+          <img src="./icon.png" alt="" className="h-8 w-8 rounded object-contain" />
+          <span className="text-sm font-bold tracking-tight">MediaGuy</span>
+          <span className="text-xs text-slate-500">1.0.0</span>
         </div>
-        
-        {/* Main content */}
-        <div className="relative z-10 text-center">
-          <div className="mb-8">
-            <img src="./icon.png" alt="" className="mx-auto mb-6 h-24 w-24 rounded-2xl object-contain" />
-            <h1 className="text-7xl font-bold text-white mb-4 tracking-wide">
-              MediaGuy
-            </h1>
-            <h2 className="text-2xl font-light text-blue-200 mb-8 tracking-wider">
-              Professional Event Management
-            </h2>
-          </div>
-          
-          <div className="text-center">
-            <p className="text-lg text-white opacity-80 mb-2">
-              Developed by
-            </p>
-            <p className="text-xl text-blue-200 font-medium">
-              Positive Developer (Mr Positive)
-            </p>
-          </div>
-          
-          {/* Loading animation */}
-          <div className="mt-12">
-            <div className="flex justify-center space-x-2">
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce"></div>
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce animation-delay-200"></div>
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce animation-delay-400"></div>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-3xl">
+            <div className="flex items-center gap-5 sm:gap-7">
+              <img src="./icon.png" alt="" className="h-20 w-20 shrink-0 rounded-2xl object-contain sm:h-28 sm:w-28" />
+              <div>
+                <p className="text-xs font-bold uppercase text-cyan-300">Church & live event control</p>
+                <h1 className="mt-2 text-4xl font-bold sm:text-6xl">MediaGuy</h1>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300 sm:text-base">Keep the programme moving, scripture ready, and your team in sync.</p>
+              </div>
+            </div>
+            <div className="mt-10 grid grid-cols-2 border-y border-slate-700 sm:grid-cols-4">
+              {[
+                { label: 'Timer', color: 'border-blue-500' },
+                { label: 'Bible & Songs', color: 'border-cyan-400' },
+                { label: 'Transcribe', color: 'border-red-400' },
+                { label: 'Cameras', color: 'border-emerald-400' },
+              ].map(item => <div key={item.label} className={`border-l-2 ${item.color} px-3 py-3 text-xs font-semibold text-slate-300 sm:px-4 sm:text-sm`}>{item.label}</div>)}
+            </div>
+            <div className="mt-8 flex items-center gap-3 text-xs text-slate-400" role="status" aria-live="polite">
+              <span className="flex h-5 items-end gap-1" aria-hidden="true"><span className="h-2 w-1 bg-cyan-400 animate-pulse" /><span className="h-4 w-1 bg-cyan-400 animate-pulse [animation-delay:150ms]" /><span className="h-3 w-1 bg-cyan-400 animate-pulse [animation-delay:300ms]" /></span>
+              Preparing your workspace
             </div>
           </div>
         </div>
