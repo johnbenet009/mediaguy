@@ -2,6 +2,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     clearCache: () => ipcRenderer.invoke('clear-cache'),
+    getAppVersion: () => ipcRenderer.invoke('app-version'),
+    getAppUpdateStatus: () => ipcRenderer.invoke('app-update-current'),
+    checkForAppUpdates: () => ipcRenderer.invoke('app-update-check'),
+    downloadAppUpdate: () => ipcRenderer.invoke('app-update-download'),
+    installAppUpdate: () => ipcRenderer.invoke('app-update-install'),
+    openAppUpdateRelease: () => ipcRenderer.invoke('app-update-open-release'),
+    onAppUpdateStatus: (callback) => {
+        const listener = (event, status) => callback(status);
+        ipcRenderer.on('app-update-status', listener);
+        return () => ipcRenderer.removeListener('app-update-status', listener);
+    },
     openAdvancedMultiScreen: () => ipcRenderer.send('open-advanced-multiscreen'),
     getDisplays: () => ipcRenderer.invoke('get-displays'),
     requestStartupDisplay: () => ipcRenderer.invoke('startup-display-request'),

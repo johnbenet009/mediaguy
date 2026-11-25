@@ -3,16 +3,22 @@
   "version": "1.0.0",
   "description": "A flexible stage timer application for presentations and events",
   "author": "Positive Developer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/johnbenet009/mediaguy.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "cd vite-core && npm run build && cd .. && xcopy vite-core\\dist\\* public\\ /E /Y",
+    "build": "npm --prefix vite-core run build && node build-copy.js",
     "build-app": "npm run build && electron-builder",
     "build-clean": "npm run build && electron-builder --dir && node build-clean.js",
     "build-installer": "npm run build && electron-builder --win nsis && node build-clean.js",
+    "release-win": "npm run build && electron-builder --win nsis --publish always",
     "build-linux": "npm run build && electron-builder --linux --config.linux.target=dir && node build-clean-linux.js",
     "build-linux-clean": "npm run build && electron-builder --linux --dir && node build-clean-linux.js",
     "build-linux-appimage": "npm run build && electron-builder --linux --config.linux.target=AppImage && node build-clean-linux.js",
+    "release-linux": "npm run build && electron-builder --linux --publish always",
     "test": "node --test remote-server.test.js",
     "check": "npm test && npm --prefix vite-core run lint && npm --prefix vite-core run typecheck",
     "dev": "npm run build && npm start",
@@ -33,6 +39,12 @@
     "directories": {
       "output": "dist",
       "buildResources": "public"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "johnbenet009",
+      "repo": "mediaguy",
+      "releaseType": "release"
     },
     "icon": "public/icon.ico",
     "win": {
@@ -92,6 +104,7 @@
     "@github/copilot-sdk": "^1.0.22",
     "app-builder-bin": "^4.0.0",
     "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.11",
     "puppeteer-core": "^25.14.0",
     "ws": "^8.22.1"
   }

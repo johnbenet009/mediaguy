@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Check, HelpCircle, Copy, Download, Loader2, Mic, Settings2, Sparkles, Square, Volume2, X, Wifi, WifiOff, ImagePlus, Archive, Eye, ChevronLeft, ChevronRight, Search, ArrowDown, ArrowUp } from 'lucide-react';
+import { Activity, AlertTriangle, Check, HelpCircle, Copy, Download, Loader2, Mic, Settings2, Sparkles, Square, Volume2, X, Wifi, WifiOff, ImagePlus, Archive, Eye, ChevronLeft, ChevronRight, Search, ArrowDown, ArrowUp, Cable, ShieldCheck } from 'lucide-react';
 import JSZip from 'jszip';
 
 type AnalysisResponse = { text: string };
@@ -720,105 +720,104 @@ export const TranscribeTab: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto grid w-full max-w-[1500px] gap-6 xl:grid-cols-[minmax(18rem,0.32fr)_minmax(0,1fr)]">
-      <aside className="space-y-5 border-b border-gray-700 pb-6 xl:border-b-0 xl:border-r xl:pb-0 xl:pr-6">
-        <header className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center bg-red-700/20 text-red-400"><Activity size={21} /></div>
-            <div>
-              <h2 className="text-xl font-bold text-white">Transcribe</h2>
-              <p className="text-xs text-gray-400">Live church event transcript</p>
-            </div>
+    <div className="mx-auto grid w-full max-w-[1580px] gap-4 lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:items-stretch">
+      <aside className="flex flex-col border border-slate-700 bg-[#121b27] lg:min-h-[calc(100vh-7rem)]">
+        <header className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 place-items-center bg-red-500/10 text-red-300"><Activity size={17} /></span>
+            <div><h2 className="text-sm font-bold text-white">Transcribe</h2><p className="text-[10px] text-slate-400">Live speech to text</p></div>
           </div>
-          <button type="button" onClick={() => setShowSetup(true)} className="flex h-9 w-9 items-center justify-center text-gray-300 hover:bg-gray-800" title="Audio setup guidance" aria-label="Audio setup guidance"><HelpCircle size={18} /></button>
+          <button type="button" onClick={() => setShowSetup(true)} className="grid h-8 w-8 place-items-center text-slate-400 hover:bg-slate-800 hover:text-white" title="Audio setup details" aria-label="Audio setup details"><HelpCircle size={16} /></button>
         </header>
 
-        <div className="space-y-4 border-y border-gray-800 py-5">
-          <div className="flex items-center justify-between border border-gray-800 bg-gray-900/70 px-3 py-2.5">
-            <span className={`inline-flex items-center gap-2 text-sm font-semibold ${internetStatus === 'online' ? 'text-emerald-300' : internetStatus === 'offline' ? 'text-red-300' : 'text-gray-300'}`}>
-              {internetStatus === 'online' ? <Wifi size={16} /> : <WifiOff size={16} />}
-              {internetStatus === 'online' ? 'Internet verified' : internetStatus === 'offline' ? 'No internet detected' : 'Internet not checked'}
-            </span>
-            <button type="button" onClick={() => void checkInternet()} disabled={internetStatus === 'checking'} className="border border-gray-700 px-3 py-1.5 text-xs font-bold text-gray-200 hover:bg-gray-800 disabled:opacity-40">
-              {internetStatus === 'checking' ? 'Checking…' : 'Check internet'}
+        <div className="space-y-4 p-3.5">
+          <section className="space-y-2.5" aria-label="Capture setup">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${internetStatus === 'online' ? 'text-emerald-300' : internetStatus === 'offline' ? 'text-red-300' : 'text-slate-300'}`}>
+                {internetStatus === 'online' ? <Wifi size={13} /> : <WifiOff size={13} />}
+                {internetStatus === 'online' ? 'Internet connected' : internetStatus === 'offline' ? 'Internet unavailable' : 'Internet not checked'}
+              </span>
+              <button type="button" onClick={() => void checkInternet()} disabled={internetStatus === 'checking'} className="text-[10px] font-semibold text-cyan-300 hover:text-cyan-200 disabled:opacity-40">
+                {internetStatus === 'checking' ? 'Checking…' : 'Check'}
+              </button>
+            </div>
+            <label className="block space-y-1.5 text-[11px] font-semibold text-slate-300">
+              Microphone source
+              <select value={selectedDeviceId} onChange={event => setSelectedDeviceId(event.target.value)} disabled={isListening} className="h-9 w-full border border-slate-700 bg-slate-950 px-2.5 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50">
+                <option value="">System default microphone</option>
+                {devices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+              </select>
+            </label>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-[10px]">
+                <span className="flex min-w-0 items-center gap-1.5 text-slate-300"><Mic size={12} className={isListening ? 'text-red-400' : 'text-slate-500'} /><span className="truncate">{inputLabel}</span></span>
+                <span className={`shrink-0 font-mono ${isListening ? 'text-red-300' : 'text-slate-500'}`}>{isListening ? 'LIVE' : status.toUpperCase()}</span>
+              </div>
+              <div className="flex h-2 gap-0.5" role="meter" aria-label="Microphone input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(inputLevel * 100)}>
+                {Array.from({ length: 24 }, (_, index) => {
+                  const active = index < Math.round(inputLevel * 24);
+                  const color = index > 20 ? 'bg-red-500' : index > 16 ? 'bg-amber-400' : 'bg-emerald-500';
+                  return <span key={index} className={`flex-1 transition-colors duration-75 ${active ? color : 'bg-slate-800'}`} />;
+                })}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-500"><span>Input level</span><span className="font-mono">{db} dB</span></div>
+            </div>
+            <button type="button" onClick={() => void toggleMicrophoneTest()} disabled={isListening || isPreparing} className="inline-flex h-8 w-full items-center justify-center gap-1.5 border border-slate-700 text-[11px] font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-40">
+              <Volume2 size={13} />{streamRef.current ? 'Stop microphone test' : 'Test microphone'}
             </button>
-          </div>
-          <label className="block space-y-2 text-sm font-semibold text-gray-300">
-            Microphone input
-            <select value={selectedDeviceId} onChange={event => setSelectedDeviceId(event.target.value)} disabled={isListening} className="w-full border border-gray-700 bg-gray-900 px-3 py-2.5 text-white">
-              <option value="">System default microphone</option>
-              {devices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
-            </select>
-          </label>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="flex min-w-0 items-center gap-2 font-semibold text-gray-300"><Mic size={15} className={isListening ? 'text-red-400' : 'text-gray-500'} /><span className="truncate">{inputLabel}</span></span>
-              <span className={`shrink-0 font-mono ${isListening ? 'text-red-300' : 'text-gray-500'}`}>{isListening ? 'LISTENING' : status.toUpperCase()}</span>
-            </div>
-            <div className="flex h-3 gap-1" role="meter" aria-label="Microphone input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(inputLevel * 100)}>
-              {Array.from({ length: 24 }, (_, index) => {
-                const active = index < Math.round(inputLevel * 24);
-                const color = index > 20 ? 'bg-red-500' : index > 16 ? 'bg-amber-400' : 'bg-emerald-500';
-                return <span key={index} className={`flex-1 transition-colors duration-75 ${active ? color : 'bg-gray-800'}`} />;
-              })}
-            </div>
-            <div className="flex items-center justify-end text-xs text-gray-400">
-              <span className="shrink-0 font-mono">{db} dB</span>
-            </div>
-          </div>
+            <label className="block space-y-1 text-[10px] text-slate-400">
+              <span className="flex items-center justify-between"><span className="flex items-center gap-1.5"><Volume2 size={12} /> Meter sensitivity</span><span>{meterGain.toFixed(1)}x</span></span>
+              <input type="range" min="0.5" max="3" step="0.1" value={meterGain} onChange={event => setMeterGain(Number(event.target.value))} className="w-full accent-cyan-400" />
+            </label>
+          </section>
 
-          <label className="block space-y-2 text-xs text-gray-400">
-            <span className="flex items-center justify-between"><span className="flex items-center gap-2"><Volume2 size={14} /> Meter sensitivity</span><span>{meterGain.toFixed(1)}x</span></span>
-            <input type="range" min="0.5" max="3" step="0.1" value={meterGain} onChange={event => setMeterGain(Number(event.target.value))} className="w-full accent-red-500" />
-            <span className="block text-[11px] text-gray-500">This calibrates the visual meter only. Adjust actual mic gain in Windows Sound settings.</span>
-          </label>
+          <section className="border-t border-slate-700 pt-3" aria-label="Audio quality guidance">
+            <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-slate-200"><Cable size={13} className="text-cyan-300" />Best audio setup</h3>
+            <ul className="mt-2 space-y-2 text-[10px] leading-relaxed text-slate-400">
+              <li className="flex gap-2"><ShieldCheck size={12} className="mt-0.5 shrink-0 text-emerald-400" /><span>Install <strong className="text-slate-200">Google Chrome</strong>. It powers speech recognition.</span></li>
+              <li className="flex gap-2"><Wifi size={12} className="mt-0.5 shrink-0 text-cyan-300" /><span>Keep the PC online; recognition sends audio to Google’s speech service.</span></li>
+              <li className="flex gap-2"><Cable size={12} className="mt-0.5 shrink-0 text-amber-300" /><span>Best: connect a clean mixer output focused on the preacher directly to the PC.</span></li>
+            </ul>
+            <p className="mt-2 border-l-2 border-amber-500/60 pl-2 text-[10px] leading-relaxed text-amber-100/80">Crowd noise, music, room echo, and clipping can reduce accuracy. This tool does not remove background noise; adjust the mixer and mic gain at the source.</p>
+            <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Meter sensitivity affects the display only, not microphone gain.</p>
+          </section>
 
-          <p className="text-[11px] leading-relaxed text-gray-500">Google Chrome handles live speech recognition. Chrome requires internet access to its speech service.</p>
-          {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
-        </div>
+          {error && <p role="alert" className="border-l-2 border-red-500 bg-red-500/5 px-2 py-1.5 text-[10px] leading-relaxed text-red-200">{error}</p>}
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-white">Social content</h3>
-            <button type="button" onClick={() => setShowSettings(true)} className="inline-flex items-center gap-2 border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800"><Settings2 size={14} /> AI Settings</button>
-          </div>
-          <p className="text-xs leading-relaxed text-gray-400">Review the transcript before sending it to GitHub Copilot. The model returns editable ideas; nothing is published automatically.</p>
-          <button type="button" onClick={analyzeTranscript} disabled={!transcript.trim() || isAnalyzing || !tokenConfigured} className="flex w-full items-center justify-center gap-2 bg-emerald-700 px-4 py-3 font-bold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40">
-            {isAnalyzing ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
-            {isAnalyzing ? 'Analyzing transcript' : tokenConfigured ? 'Analyze & Plan 7 Days' : 'Set Up AI to Analyze'}
-          </button>
-          {!tokenConfigured && <p className="text-xs text-amber-300">{secureStorageAvailable ? 'Add a GitHub Copilot token in AI Settings to enable analysis.' : 'Secure token storage is unavailable until the desktop app is updated.'}</p>}
-          {analysisError && <p role="alert" className="text-xs text-red-300">{analysisError}</p>}
+          <section className="border-t border-slate-700 pt-3" aria-label="Social content tools">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-bold text-slate-200">Social content</h3>
+              <button type="button" onClick={() => setShowSettings(true)} title="AI settings" aria-label="AI settings" className="grid h-8 w-8 place-items-center text-slate-400 hover:bg-slate-800 hover:text-white"><Settings2 size={14} /></button>
+            </div>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">Optional Copilot plan. Review edits; nothing publishes automatically.</p>
+            <button type="button" onClick={analyzeTranscript} disabled={!transcript.trim() || isAnalyzing || !tokenConfigured} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 bg-emerald-800/80 px-2 text-[11px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">
+              {isAnalyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {isAnalyzing ? 'Analyzing…' : tokenConfigured ? 'Analyze transcript' : 'AI not configured'}
+            </button>
+            {!tokenConfigured && <p className="mt-1.5 text-[10px] leading-relaxed text-amber-300">Add a GitHub Copilot token in AI Settings to enable analysis.</p>}
+            {analysisError && <p role="alert" className="mt-2 text-[10px] text-red-300">{analysisError}</p>}
+          </section>
         </div>
       </aside>
 
-      <section className="flex min-h-[70vh] flex-col overflow-hidden border border-gray-700 bg-[#090d13] shadow-2xl">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3">
+      <section className="flex min-h-[68vh] flex-col overflow-hidden border border-slate-700 bg-[#090d13] lg:min-h-[calc(100vh-7rem)]">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-[#111a26] px-3 py-2.5 sm:px-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-200"><span className={`h-2 w-2 rounded-full ${isListening ? 'animate-pulse bg-emerald-400' : 'bg-gray-600'}`} /> Live transcript</div>
-            <span className="mt-1 block text-xs text-gray-500">{transcript.trim() ? `${transcript.trim().split(/\s+/).length.toLocaleString()} words` : 'Paste a transcript or start speaking'} · {transcriptSaveError ? 'Local save unavailable' : 'Saved on this device'}</span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-200"><span className={`h-2 w-2 rounded-full ${isListening ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'}`} />{isListening ? 'Transcription live' : 'Transcript'}</div>
+            <span className="mt-1 block text-[10px] text-slate-500">{transcript.trim() ? `${transcript.trim().split(/\s+/).length.toLocaleString()} words` : 'Editable transcript'} · {transcriptSaveError ? 'Local save unavailable' : 'Saved on this device'}</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void toggleMicrophoneTest()} disabled={isListening || isPreparing} title={streamRef.current ? 'Stop microphone test' : 'Test microphone'} aria-label={streamRef.current ? 'Stop microphone test' : 'Test microphone'} className="inline-flex h-9 items-center gap-2 border border-gray-700 px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40">
-              <Volume2 size={15} /> <span>{streamRef.current ? 'Stop test' : 'Mic test'}</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button type="button" onClick={isListening ? stopTranscription : startTranscription} disabled={!isListening && (internetStatus !== 'online' || isPreparing)} className={`inline-flex h-8 items-center justify-center gap-1.5 px-3 text-xs font-bold text-white transition-colors disabled:cursor-not-allowed ${isListening ? 'bg-red-700 hover:bg-red-600' : isPreparing ? 'bg-cyan-900 text-cyan-100' : internetStatus === 'online' ? 'bg-cyan-700 hover:bg-cyan-600' : 'bg-slate-800 text-slate-500'}`} aria-label={isListening ? 'Stop transcription' : 'Start transcription'}>
+              {isPreparing ? <Loader2 size={13} className="animate-spin" /> : isListening ? <Square size={12} /> : <Mic size={13} />}
+              {isPreparing ? 'Connecting…' : isListening ? 'Stop' : internetStatus === 'online' ? 'Start' : 'Internet required'}
             </button>
-            <button
-              type="button"
-              onClick={isListening ? stopTranscription : startTranscription}
-              disabled={!isListening && (internetStatus !== 'online' || isPreparing)}
-              className={`inline-flex h-9 min-w-40 items-center justify-center gap-2 px-4 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed ${isListening ? 'bg-emerald-700 hover:bg-emerald-600' : isPreparing ? 'bg-emerald-900 text-emerald-100' : internetStatus === 'online' ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-800 text-gray-500'}`}
-              aria-label={isListening ? 'Stop transcription' : 'Start transcription'}
-            >
-              {isPreparing ? <Loader2 size={16} className="animate-spin" /> : isListening ? <Square size={14} /> : <Mic size={16} />}
-              {isPreparing ? 'Connecting…' : isListening ? 'Stop transcription' : internetStatus === 'online' ? 'Start transcription' : 'Internet required'}
-            </button>
-            <button type="button" onClick={downloadTranscript} disabled={!transcript} title="Download transcript" aria-label="Download transcript" className="flex h-9 w-9 items-center justify-center text-gray-300 hover:bg-gray-800 disabled:opacity-30"><Download size={15} /></button>
-            <button type="button" onClick={() => { updateTranscript(''); setInterim(''); setAnalysis(''); setSocialGraphics([]); setSelectedGraphicDay(null); setPreviewGraphic(null); }} disabled={!transcript && !analysis} title="Clear transcript and its saved copy" aria-label="Clear transcript" className="flex h-9 w-9 items-center justify-center text-gray-300 hover:bg-gray-800 disabled:opacity-30"><X size={16} /></button>
+            <button type="button" onClick={downloadTranscript} disabled={!transcript} title="Download transcript" aria-label="Download transcript" className="grid h-8 w-8 place-items-center text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"><Download size={14} /></button>
+            <button type="button" onClick={() => { updateTranscript(''); setInterim(''); setAnalysis(''); setSocialGraphics([]); setSelectedGraphicDay(null); setPreviewGraphic(null); }} disabled={!transcript && !analysis} title="Clear transcript and saved copy" aria-label="Clear transcript" className="grid h-8 w-8 place-items-center text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"><X size={14} /></button>
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6" aria-label="Transcription output">
-          <div className="mb-4 flex items-center gap-2 border border-gray-700 bg-gray-900/80 px-3 py-2 rounded-lg shrink-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-4" aria-label="Transcription output">
+          <div className="mb-2 flex shrink-0 items-center gap-2 border border-slate-700 bg-[#111a26] px-2.5 py-1.5">
             <Search size={15} className="text-gray-400 shrink-0" />
             <input
               type="text"
@@ -831,7 +830,7 @@ export const TranscribeTab: React.FC = () => {
                 }
               }}
               placeholder="Search transcript for keywords, topics or scriptures..."
-              className="w-full bg-transparent text-xs text-white outline-none placeholder:text-gray-500 font-medium"
+              className="w-full bg-transparent text-xs text-white outline-none placeholder:text-slate-500 font-medium"
             />
             {normalizedSearch && <span className="shrink-0 text-[11px] tabular-nums text-gray-400">{transcriptMatches.length ? `${searchMatchIndex + 1}/${transcriptMatches.length}` : 'No matches'}</span>}
             <button type="button" onClick={() => navigateTranscriptMatch(-1)} disabled={!transcriptMatches.length} title="Previous match (Shift+Enter)" aria-label="Previous transcript match" className="flex h-7 w-7 shrink-0 items-center justify-center text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-30"><ArrowUp size={14} /></button>
@@ -847,7 +846,7 @@ export const TranscribeTab: React.FC = () => {
             value={transcript}
             onChange={event => updateTranscript(event.target.value)}
             placeholder={isListening ? 'Listening for speech…' : 'Paste a transcript here, or start speaking to transcribe live.'}
-            className="min-h-[50vh] w-full flex-1 resize-none bg-transparent font-sans text-base leading-8 text-gray-100 outline-none placeholder:text-gray-600 sm:text-lg"
+            className="min-h-[50vh] w-full flex-1 resize-none bg-transparent px-1 py-3 font-sans text-base leading-8 text-slate-100 outline-none placeholder:text-slate-600 focus:outline-none sm:text-lg"
             aria-label="Editable transcript. Paste or type text here."
             spellCheck
           />
@@ -960,14 +959,14 @@ export const TranscribeTab: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowSetup(false); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="audio-setup-title" className="w-full max-w-lg border border-gray-700 bg-gray-900 p-6 shadow-2xl">
             <header className="flex items-start justify-between gap-4">
-              <div><h3 id="audio-setup-title" className="text-lg font-bold text-white">Get a clean recording</h3><p className="mt-1 text-sm text-gray-400">A short setup makes recognition noticeably better.</p></div>
+              <div><h3 id="audio-setup-title" className="text-lg font-bold text-white">Get a clear transcript</h3><p className="mt-1 text-sm text-gray-400">Chrome speech recognition needs Chrome and an internet connection.</p></div>
               <button type="button" onClick={() => setShowSetup(false)} aria-label="Close guidance" className="p-1 text-gray-400 hover:text-white"><X size={18} /></button>
             </header>
             <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-gray-300">
-              <li>Use a dedicated microphone close to the preacher, aimed away from speakers and congregation noise.</li>
-              <li>In Windows Sound settings, select that microphone and set its input level so normal speech reaches the green meter without touching red.</li>
-              <li>Reduce room noise and avoid placing the mic beside loudspeakers; this app cannot isolate a speaker from a mixed room feed.</li>
-              <li>Keep the PC online: Google Chrome sends audio to its speech-recognition service.</li>
+              <li>Install Google Chrome on this PC. MediaGuy opens Chrome’s speech-recognition engine to transcribe.</li>
+              <li>Keep the PC connected to the internet; Chrome sends speech audio to Google’s recognition service.</li>
+              <li>Best result: connect a clean output from the sound mixer directly to the PC, with the preacher’s microphone prominent and other mics/music reduced.</li>
+              <li>Keep speech clear and below clipping. Crowd noise, room echo, music, and feedback can reduce accuracy; MediaGuy does not remove background noise from a mixed feed.</li>
             </ol>
             <div className="mt-5 flex items-start gap-2 border-l-2 border-amber-500 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100"><AlertTriangle size={15} className="mt-0.5 shrink-0" />Chrome speech recognition requires internet access and may be blocked by firewall, VPN, or proxy settings.</div>
             <button type="button" onClick={() => setShowSetup(false)} className="mt-6 w-full bg-gray-700 px-4 py-3 font-semibold text-white hover:bg-gray-600">Understood</button>

@@ -7,7 +7,140 @@ const url = require('url');
 const http = require('http');
 const puppeteer = require('puppeteer-core');
 const Database = require('better-sqlite3');
+const { autoUpdater } = require('electron-updater');
 const remoteServer = require('./remote-server');
+const updatePublishConfig = require('./package.json').build.publish;
+const updateRepository = Array.isArray(updatePublishConfig) ? updatePublishConfig[0] : updatePublishConfig;
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.allowPrerelease = false;
+
+let appUpdateState = { status: 'idle', currentVersion: app.getVersion() };
+const getUpdateInstallMode = () => !app.isPackaged || (process.platform === 'linux' && !process.env.APPIMAGE) ? 'manual' : 'automatic';
+
+const publishAppUpdateState = (patch) => {
+    appUpdateState = { ...appUpdateState, installMode: getUpdateInstallMode(), ...patch, currentVersion: app.getVersion() };
+    BrowserWindow.getAllWindows().forEach(window => {
+        if (!window.isDestroyed()) window.webContents.send('app-update-status', appUpdateState);
+    });
+    return appUpdateState;
+};
+
+const formatReleaseNotes = (notes) => {
+    if (typeof notes === 'string') return notes.slice(0, 12000);
+    if (Array.isArray(notes)) return notes.map(note => typeof note === 'string' ? note : note?.note || '').filter(Boolean).join('\n').slice(0, 12000);
+    return '';
+};
+
+const checkForAppUpdates = async () => {
+    if (['checking', 'downloading', 'downloaded'].includes(appUpdateState.status)) return appUpdateState;
+    publishAppUpdateState({ status: 'checking', message: 'Checking GitHub Releases…' });
+    if (getUpdateInstallMode() === 'manual') {
+        try {
+            const response = await net.fetch(`https://api.github.com/repos/${updateRepository.owner}/${updateRepository.repo}/releases/latest`, {
+                headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MediaGuy-Updater' },
+            });
+            if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
+            const release = await response.json();
+            const version = String(release.tag_name || '').replace(/^v/, '');
+            const parseVersion = value => String(value).split('.').map(part => Number.parseInt(part, 10));
+            const currentParts = parseVersion(app.getVersion());
+            const latestParts = parseVersion(version);
+            const isNewer = latestParts.length === 3 && currentParts.length === 3 && latestParts.some((part, index) => part > currentParts[index] && latestParts.slice(0, index).every((prior, priorIndex) => prior === currentParts[priorIndex]));
+            if (!isNewer) return publishAppUpdateState({ status: 'up-to-date', version: app.getVersion(), message: 'You are using the latest version.' });
+            return publishAppUpdateState({
+                status: 'available',
+                installMode: 'manual',
+                version,
+                releaseName: release.name || '',
+                releaseNotes: formatReleaseNotes(release.body),
+                releaseDate: release.published_at || '',
+                releaseUrl: release.html_url,
+                message: `MediaGuy ${version} is available.`,
+            });
+        } catch (error) {
+            publishAppUpdateState({
+                status: 'error',
+                message: error.message.includes('HTTP 404')
+                    ? 'No stable GitHub Release has been published yet.'
+                    : 'Could not check GitHub Releases. Check your internet connection and try again.',
+            });
+            console.error('MediaGuy GitHub release check failed:', error.message);
+            return appUpdateState;
+        }
+    }
+    try {
+        await autoUpdater.checkForUpdates();
+    } catch (error) {
+        publishAppUpdateState({ status: 'error', message: 'Could not check for updates. Check your internet connection and try again.' });
+        console.error('MediaGuy update check failed:', error.message);
+    }
+    return appUpdateState;
+};
+
+autoUpdater.on('checking-for-update', () => publishAppUpdateState({ status: 'checking', message: 'Checking GitHub Releases…' }));
+autoUpdater.on('update-available', info => publishAppUpdateState({
+    status: 'available',
+    version: info.version,
+    releaseName: info.releaseName || '',
+    releaseNotes: formatReleaseNotes(info.releaseNotes),
+    releaseDate: info.releaseDate || '',
+    message: `MediaGuy ${info.version} is available.`,
+}));
+autoUpdater.on('update-not-available', info => publishAppUpdateState({
+    status: 'up-to-date',
+    version: info.version,
+    message: 'You are using the latest version.',
+}));
+autoUpdater.on('download-progress', progress => publishAppUpdateState({
+    status: 'downloading',
+    percent: Math.round(progress.percent),
+    transferred: progress.transferred,
+    total: progress.total,
+    message: `Downloading update… ${Math.round(progress.percent)}%`,
+}));
+autoUpdater.on('update-downloaded', info => publishAppUpdateState({
+    status: 'downloaded',
+    version: info.version,
+    releaseName: info.releaseName || '',
+    releaseNotes: formatReleaseNotes(info.releaseNotes),
+    message: `MediaGuy ${info.version} is ready to install.`,
+}));
+autoUpdater.on('error', error => {
+    publishAppUpdateState({
+        status: 'error',
+        message: error.statusCode === 404
+            ? 'No stable GitHub Release has been published yet.'
+            : 'The update service encountered a problem. You can try again later.',
+    });
+    console.error('MediaGuy updater error:', error.message);
+});
+
+ipcMain.handle('app-version', () => app.getVersion());
+ipcMain.handle('app-update-current', () => appUpdateState);
+ipcMain.handle('app-update-check', () => checkForAppUpdates());
+ipcMain.handle('app-update-download', async () => {
+    if (appUpdateState.status !== 'available') return appUpdateState;
+    publishAppUpdateState({ status: 'downloading', percent: 0, message: 'Starting download…' });
+    try {
+        await autoUpdater.downloadUpdate();
+    } catch (error) {
+        publishAppUpdateState({ status: 'error', message: 'The update could not be downloaded. Check your connection and try again.' });
+        console.error('MediaGuy update download failed:', error.message);
+    }
+    return appUpdateState;
+});
+ipcMain.handle('app-update-install', () => {
+    if (appUpdateState.status !== 'downloaded') return false;
+    autoUpdater.quitAndInstall(false, true);
+    return true;
+});
+ipcMain.handle('app-update-open-release', () => {
+    if (appUpdateState.installMode !== 'manual' || !appUpdateState.releaseUrl?.startsWith(`https://github.com/${updateRepository.owner}/${updateRepository.repo}/releases/`)) return false;
+    void shell.openExternal(appUpdateState.releaseUrl);
+    return true;
+});
 
 let db;
 app.whenReady().then(() => {
@@ -238,6 +371,8 @@ app.on('ready', () => {
 
     // Setup menu
     setupMenu();
+
+    setTimeout(() => { void checkForAppUpdates(); }, 10000);
 
 
     mainWindow.on('closed', () => {

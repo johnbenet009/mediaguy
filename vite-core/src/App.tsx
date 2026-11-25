@@ -40,6 +40,9 @@ const isTimerHistoryEntry = (value: unknown): value is TimerHistoryEntry =>
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [appVersion, setAppVersion] = useState('1.0.0');
+  const [appUpdate, setAppUpdate] = useState<AppUpdateStatus>({ status: 'idle' });
+  const [dismissedUpdateKey, setDismissedUpdateKey] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribeBibleSuggestion, setTranscribeBibleSuggestion] = useState<TranscribeBibleSuggestion | null>(null);
   const [setupTimer, setSetupTimer] = useState<TimerState>({
@@ -81,6 +84,20 @@ function App() {
     const deadline = stored ? Number(stored) : null;
     return deadline && deadline > Date.now() ? deadline : null;
   });
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.getAppUpdateStatus || !api.onAppUpdateStatus) return;
+    let active = true;
+    void api.getAppVersion?.().then(version => { if (active && version) setAppVersion(version); }).catch(() => undefined);
+    void api.getAppUpdateStatus().then(status => { if (active) setAppUpdate(status); }).catch(() => undefined);
+    const unsubscribe = api.onAppUpdateStatus(status => {
+      if (!active) return;
+      setAppUpdate(status);
+      if (status.status === 'available' || status.status === 'downloaded') setDismissedUpdateKey('');
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const timerDeadlineRef = useRef<number | null>(null);
   useEffect(() => {
     timerDeadlineRef.current = timerDeadline;
@@ -1338,7 +1355,7 @@ function App() {
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-700 bg-[#17212e] px-5">
           <img src="./icon.png" alt="" className="h-8 w-8 rounded object-contain" />
           <span className="text-sm font-bold tracking-tight">MediaGuy</span>
-          <span className="text-xs text-slate-500">1.0.0</span>
+          <span className="text-xs text-slate-500">{appVersion}</span>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">
           <div className="w-full max-w-3xl">
@@ -1390,6 +1407,30 @@ function App() {
     });
   };
 
+  const checkForUpdates = () => {
+    if (!window.electronAPI?.checkForAppUpdates) {
+      setAppUpdate({ status: 'unsupported', message: 'Update checks are available in installed builds.' });
+      return;
+    }
+    setDismissedUpdateKey('');
+    setAppUpdate(current => ({ ...current, status: 'checking', message: 'Checking GitHub Releases…' }));
+    void window.electronAPI.checkForAppUpdates().then(status => {
+      if (status.status !== 'checking') setAppUpdate(status);
+    }).catch(() => {
+      setAppUpdate(current => ({ ...current, status: 'error', message: 'Could not check for updates. Check your connection and try again.' }));
+    });
+  };
+
+  const downloadUpdate = () => {
+    if (!window.electronAPI?.downloadAppUpdate) return;
+    setAppUpdate(current => ({ ...current, status: 'downloading', percent: 0, message: 'Starting download…' }));
+    void window.electronAPI.downloadAppUpdate().then(status => {
+      if (status.status !== 'downloading') setAppUpdate(status);
+    }).catch(() => {
+      setAppUpdate(current => ({ ...current, status: 'error', message: 'The update could not be downloaded. Try again later.' }));
+    });
+  };
+
   // Render control panel
   return (
     <div className={`${activeTab === 'bible' || activeTab === 'songs' || activeTab === 'cameras' ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-gray-900 flex flex-col`}>
@@ -1397,7 +1438,7 @@ function App() {
       <div className="sticky top-0 z-50 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 px-2 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shadow-md select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag' }}>
         <div className="flex items-center space-x-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag' }}>
           <img src="./icon.png" alt="MediaGuy" className="h-8 w-8 rounded object-contain" />
-          <h1 className="text-xl font-bold text-white tracking-tight">MediaGuy <span className="text-xs text-blue-400 font-normal">v1.0.0</span></h1>
+          <h1 className="text-xl font-bold text-white tracking-tight">MediaGuy <span className="text-xs text-blue-400 font-normal">v{appVersion}</span></h1>
         </div>
         
         <div className="flex min-w-0 max-w-full flex-[1_1_420px] flex-nowrap justify-center overflow-x-auto bg-gray-900 rounded-lg p-1 border border-gray-700" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion: 'drag' | 'no-drag' }}>
@@ -2052,7 +2093,15 @@ function App() {
           />
         ) : activeTab === 'guide' ? (
           <div className="mx-auto w-full xl:max-w-[1600px] 2xl:max-w-[1900px]">
-            <HowToGuide variant="page" />
+            <HowToGuide
+              variant="page"
+              updateStatus={appUpdate}
+              appVersion={appVersion}
+              onCheckForUpdates={checkForUpdates}
+              onDownloadUpdate={downloadUpdate}
+              onInstallUpdate={() => void window.electronAPI?.installAppUpdate?.()}
+              onOpenUpdateRelease={() => void window.electronAPI?.openAppUpdateRelease?.()}
+            />
           </div>
         ) : null}
         <div className={`h-full min-h-0 ${activeTab === 'cameras' ? 'block' : 'hidden'}`}>
@@ -2145,6 +2194,29 @@ function App() {
           categories={categories}
           initialCategory={selectedCategory}
         />
+      )}
+      {['available', 'downloading', 'downloaded', 'error'].includes(appUpdate.status) && dismissedUpdateKey !== `${appUpdate.status}:${appUpdate.version || ''}` && (
+        <section role="status" aria-live="polite" className="fixed bottom-5 left-5 z-[140] w-[min(26rem,calc(100vw-2.5rem))] border border-cyan-500/40 bg-gray-950 p-4 text-white shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase text-cyan-300">{appUpdate.status === 'error' ? 'Update check failed' : 'MediaGuy update'}</p>
+              <p className="mt-1 text-base font-bold">
+                {appUpdate.status === 'available' ? `Version ${appUpdate.version} is available` : appUpdate.status === 'downloading' ? 'Downloading update' : appUpdate.status === 'downloaded' ? `Version ${appUpdate.version} is ready` : appUpdate.message}
+              </p>
+            </div>
+            <button type="button" onClick={() => setDismissedUpdateKey(`${appUpdate.status}:${appUpdate.version || ''}`)} aria-label="Dismiss update notice" className="grid h-8 w-8 shrink-0 place-items-center text-gray-400 hover:bg-gray-800 hover:text-white"><X size={16} /></button>
+          </div>
+          {appUpdate.status === 'available' && appUpdate.releaseNotes && <p className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-300">{appUpdate.releaseNotes}</p>}
+          {appUpdate.status === 'downloading' && <div className="mt-3 h-1.5 overflow-hidden bg-gray-800"><div className="h-full bg-cyan-400 transition-[width]" style={{ width: `${appUpdate.percent ?? 0}%` }} /></div>}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-[11px] text-gray-500">Installed: {appVersion}{appUpdate.status === 'downloading' && appUpdate.percent !== undefined ? ` · ${appUpdate.percent}%` : ''}</span>
+            {appUpdate.status === 'available' && appUpdate.installMode === 'manual' && <button type="button" onClick={() => void window.electronAPI?.openAppUpdateRelease?.()} className="min-h-10 bg-cyan-700 px-4 text-sm font-bold text-white hover:bg-cyan-600">Open release</button>}
+            {appUpdate.status === 'available' && appUpdate.installMode !== 'manual' && <button type="button" onClick={downloadUpdate} className="min-h-10 bg-cyan-700 px-4 text-sm font-bold text-white hover:bg-cyan-600">Download update</button>}
+            {appUpdate.status === 'downloaded' && <button type="button" onClick={() => void window.electronAPI?.installAppUpdate?.()} className="min-h-10 bg-emerald-700 px-4 text-sm font-bold text-white hover:bg-emerald-600">Restart to install</button>}
+            {appUpdate.status === 'error' && <button type="button" onClick={() => void window.electronAPI?.checkForAppUpdates?.().then(setAppUpdate)} className="min-h-10 border border-gray-600 px-4 text-sm font-semibold text-gray-200 hover:bg-gray-800">Try again</button>}
+            {appUpdate.status === 'available' && <button type="button" onClick={() => setDismissedUpdateKey(`${appUpdate.status}:${appUpdate.version || ''}`)} className="min-h-10 px-2 text-sm text-gray-400 hover:text-white">Later</button>}
+          </div>
+        </section>
       )}
       {transcribeBibleSuggestion && (
         <section role="status" aria-live="polite" className="fixed bottom-5 right-5 z-[140] w-[min(24rem,calc(100vw-2.5rem))] border border-emerald-500/50 bg-gray-950 p-4 text-white shadow-2xl">

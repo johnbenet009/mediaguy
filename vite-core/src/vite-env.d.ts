@@ -3,6 +3,13 @@
 interface Window {
 	electronAPI?: {
 		clearCache?: () => Promise<void>;
+		getAppVersion?: () => Promise<string>;
+		getAppUpdateStatus?: () => Promise<AppUpdateStatus>;
+		checkForAppUpdates?: () => Promise<AppUpdateStatus>;
+		downloadAppUpdate?: () => Promise<AppUpdateStatus>;
+		installAppUpdate?: () => Promise<boolean>;
+		openAppUpdateRelease?: () => Promise<boolean>;
+		onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;
 		openAdvancedMultiScreen?: () => void;
 		getDisplays?: () => Promise<Array<{ id: number; label: string; isPrimary: boolean; isUsedByMainTimer: boolean }>>;
 		requestStartupDisplay?: () => Promise<{ displayId: number } | null>;
@@ -50,6 +57,19 @@ interface Window {
 		onRemoteClientsChanged?: (callback: (count: number) => void) => () => void;
 		openExternalUrl?: (url: string) => void;
 	};
+}
+
+interface AppUpdateStatus {
+	status: 'idle' | 'unsupported' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error';
+	installMode?: 'automatic' | 'manual';
+	currentVersion?: string;
+	version?: string;
+	releaseName?: string;
+	releaseNotes?: string;
+	releaseDate?: string;
+	percent?: number;
+	message?: string;
+	releaseUrl?: string;
 }
 
 interface RemoteServerStatus {

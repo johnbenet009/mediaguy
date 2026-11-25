@@ -1,11 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, BookOpen, Camera, ChevronRight, Headphones, HelpCircle, Home, Mic, Monitor, Search, Settings2, Timer, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Camera, Check, ChevronRight, Download, ExternalLink, Headphones, HelpCircle, Home, Loader2, Mic, Monitor, Search, Settings2, Timer, X } from 'lucide-react';
 
 interface HowToGuideProps {
   isOpen?: boolean;
   onClose?: () => void;
   variant?: 'modal' | 'page';
   initialSection?: 'main';
+  updateStatus?: AppUpdateStatus;
+  appVersion?: string;
+  onCheckForUpdates?: () => void;
+  onDownloadUpdate?: () => void;
+  onInstallUpdate?: () => void;
+  onOpenUpdateRelease?: () => void;
 }
 
 type GuideTopic = {
@@ -191,7 +197,17 @@ const guideSections: GuideSection[] = [
   },
 ];
 
-export function HowToGuide({ isOpen = true, onClose = () => {}, variant = 'modal' }: HowToGuideProps) {
+export function HowToGuide({
+  isOpen = true,
+  onClose = () => {},
+  variant = 'modal',
+  updateStatus = { status: 'unsupported', message: 'Update checks are available in installed builds.' },
+  appVersion = '1.0.0',
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+  onOpenUpdateRelease,
+}: HowToGuideProps) {
   const [search, setSearch] = useState('');
   const [activeSectionId, setActiveSectionId] = useState('start');
   const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -250,6 +266,41 @@ export function HowToGuide({ isOpen = true, onClose = () => {}, variant = 'modal
                 <span className="hidden items-center gap-1 text-xs text-slate-500 sm:flex">Select a section <ChevronRight size={14} /></span>
               </div>
 
+              <section aria-label="App updates" className="mb-5 border border-slate-700 bg-[#151f2c] px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center bg-cyan-500/10 text-cyan-300"><Download size={15} /></span>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-white">MediaGuy {appVersion}<span className="ml-2 text-[10px] font-semibold uppercase text-cyan-300">Updates</span></p>
+                      <p className="mt-0.5 truncate text-[11px] leading-relaxed text-slate-400">
+                      {updateStatus.status === 'checking' ? 'Checking GitHub Releases now…'
+                        : updateStatus.status === 'available' ? `Version ${updateStatus.version} is available.`
+                          : updateStatus.status === 'downloading' ? `Downloading version ${updateStatus.version}… ${updateStatus.percent ?? 0}%`
+                            : updateStatus.status === 'downloaded' ? `Version ${updateStatus.version} is downloaded and ready to install.`
+                              : updateStatus.status === 'up-to-date' ? 'You are using the latest version.'
+                                : updateStatus.status === 'error' ? updateStatus.message || 'Could not check for updates.'
+                                  : updateStatus.status === 'unsupported' ? updateStatus.message || 'Update checks are available in installed builds.'
+                                    : 'Check GitHub Releases for a newer version.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {updateStatus.status === 'available' && updateStatus.installMode === 'manual' && <button type="button" onClick={onOpenUpdateRelease} className="inline-flex min-h-8 items-center gap-1.5 bg-cyan-700 px-2.5 text-[11px] font-bold text-white hover:bg-cyan-600"><ExternalLink size={13} />Open release</button>}
+                    {updateStatus.status === 'available' && updateStatus.installMode !== 'manual' && <button type="button" onClick={onDownloadUpdate} className="inline-flex min-h-8 items-center gap-1.5 bg-cyan-700 px-2.5 text-[11px] font-bold text-white hover:bg-cyan-600"><Download size={13} />Download</button>}
+                    {updateStatus.status === 'downloaded' && <button type="button" onClick={onInstallUpdate} className="inline-flex min-h-8 items-center gap-1.5 bg-emerald-700 px-2.5 text-[11px] font-bold text-white hover:bg-emerald-600">Restart to install</button>}
+                    {updateStatus.status === 'checking' || updateStatus.status === 'downloading'
+                      ? <span role="status" className="inline-flex min-h-8 items-center gap-1.5 border border-slate-600 px-2.5 text-[11px] font-semibold text-cyan-200"><Loader2 size={13} className="animate-spin" />{updateStatus.status === 'checking' ? 'Checking…' : `${updateStatus.percent ?? 0}%`}</span>
+                      : updateStatus.status === 'up-to-date'
+                        ? <span className="inline-flex min-h-8 items-center gap-1.5 border border-emerald-700/60 px-2.5 text-[11px] font-semibold text-emerald-300"><Check size={13} />Up to date</span>
+                        : <button type="button" onClick={onCheckForUpdates} disabled={!onCheckForUpdates} className="inline-flex min-h-8 items-center gap-1.5 border border-slate-600 px-2.5 text-[11px] font-bold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"><Download size={13} />Check for updates</button>}
+                  </div>
+                </div>
+                {(updateStatus.status === 'available' || updateStatus.status === 'downloaded') && <div className="mt-4 border-t border-slate-700 pt-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase text-slate-400">What’s new in {updateStatus.version}</p>
+                  <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{updateStatus.releaseNotes || 'The publisher did not include release notes.'}</div>
+                </div>}
+              </section>
+
               <figure className="mb-7 overflow-hidden border border-slate-700 bg-slate-950">
                 <img src={activeSection.screenshot} alt={activeSection.screenshotAlt} className={activeSection.mobileScreenshot ? 'mx-auto block max-h-[520px] max-w-full object-contain' : 'block h-auto w-full'} />
                 <figcaption className="border-t border-slate-800 px-3 py-2 text-[11px] text-slate-500">MediaGuy {activeSection.shortTitle} workspace</figcaption>
@@ -274,7 +325,7 @@ export function HowToGuide({ isOpen = true, onClose = () => {}, variant = 'modal
               </div>
 
               <footer className="flex flex-wrap items-center justify-between gap-3 py-5 text-xs text-slate-500">
-                <span>MediaGuy 1.0.0 · Help for the current desktop app</span>
+                <span>MediaGuy {appVersion} · Help for the current desktop app</span>
                 <a href="https://github.com/johnbenet009/mediaguy" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300 hover:text-cyan-200">Project on GitHub</a>
               </footer>
             </div>
