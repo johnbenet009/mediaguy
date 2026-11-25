@@ -33,11 +33,6 @@
   content: attr(data-placeholder);
 }
 
-.song-document-editor [data-song-stanza] {
-  display: block;
-  padding-bottom: 1.4em;
-}
-
 .online-resource-scrollbar {
   scrollbar-color: #475569 #111827;
   scrollbar-width: thin;

@@ -91,7 +91,7 @@ const splitSongDocument = (html: string, textFallback: string, previousSlides: S
   let current: string[] = [];
   let trailingSeparator = false;
   const finishGroup = (separator = false) => {
-    const content = current.join('<br>').replace(/(?:<br>)+$/, '');
+    const content = current.join('').replace(/(?:<br>)+$/, '');
     if (songHtmlToText(content).trim()) {
       groups.push(content);
       trailingSeparator = false;
@@ -124,6 +124,7 @@ const splitSongDocument = (html: string, textFallback: string, previousSlides: S
           finishGroup(true);
           return;
         }
+        if (current.length && current[current.length - 1] !== '<br>') current.push('<br>');
         Array.from(node.childNodes).forEach(processNode);
         return;
       }
@@ -136,7 +137,10 @@ const splitSongDocument = (html: string, textFallback: string, previousSlides: S
         return;
       }
       const blockHtml = sanitizeSongHtml(node.innerHTML);
-      if (blockHtml) current.push(blockHtml);
+      if (blockHtml) {
+        if (current.length && current[current.length - 1] !== '<br>') current.push('<br>');
+        current.push(blockHtml);
+      }
       return;
     }
     const nodeHtml = sanitizeSongHtml(node.outerHTML);
@@ -1539,9 +1543,9 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
 
                 <section className="flex min-h-0 flex-col bg-gray-950" aria-label="All song slide previews">
                   <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-3 py-2"><div><h3 className="text-xs font-bold text-white">Slide previews</h3><p className="mt-0.5 text-[10px] text-gray-500">Select any preview to jump to that stanza</p></div><div className="flex items-center gap-2"><span className="text-[10px] text-gray-500">{songSlides.length} total</span><button type="button" onClick={addSongSlide} title="Add empty slide" aria-label="Add empty slide" className="inline-flex h-7 w-7 items-center justify-center rounded bg-gray-800 text-gray-200 hover:bg-gray-700"><Plus size={14} /></button></div></div>
-                  <div className="online-resource-scrollbar grid min-h-0 flex-1 auto-rows-[minmax(8rem,1fr)] grid-cols-2 gap-2 overflow-y-auto p-2 xl:grid-cols-3" role="list" aria-label="Slides">
-                    {songSlides.map((slide, index) => <div key={index} className={`group relative flex min-h-0 flex-col overflow-hidden border ${activeSlide === index ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-gray-700 hover:border-gray-500'}`}>
-                      <button type="button" onClick={() => jumpToStanza(index)} aria-label={`Select slide ${index + 1}`} aria-pressed={activeSlide === index} className="flex min-h-0 flex-1 flex-col text-left"><div className="min-h-0 flex-1 overflow-hidden"><ProjectionSurface settings={projectionSettings} songText={slide.html || 'Empty slide'} songStyle={slide} className="h-full w-full" /></div><span className="flex h-6 shrink-0 items-center justify-between bg-gray-900 px-2 text-[10px] text-gray-300"><span>Slide {String(index + 1).padStart(2, '0')}</span>{liveSong?.title === songTitle && liveSong.slide === index && isProjecting && <span className="font-bold text-emerald-300">LIVE</span>}</span></button>
+                  <div className="online-resource-scrollbar grid min-h-0 flex-1 content-start grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] items-start gap-2 overflow-y-auto p-2" role="list" aria-label="Slides">
+                    {songSlides.map((slide, index) => <div key={index} className={`group relative flex flex-col overflow-hidden border ${activeSlide === index ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-gray-700 hover:border-gray-500'}`}>
+                      <button type="button" onClick={() => jumpToStanza(index)} aria-label={`Select slide ${index + 1}`} aria-pressed={activeSlide === index} className="block w-full text-left"><div className="aspect-video w-full overflow-hidden"><ProjectionSurface settings={projectionSettings} songText={slide.html || 'Empty slide'} songStyle={slide} className="h-full w-full" /></div><span className="flex h-6 items-center justify-between bg-gray-900 px-2 text-[10px] text-gray-300"><span>Slide {String(index + 1).padStart(2, '0')}</span>{liveSong?.title === songTitle && liveSong.slide === index && isProjecting && <span className="font-bold text-emerald-300">LIVE</span>}</span></button>
                       <button type="button" onClick={() => presentSongSlide(index)} disabled={!hasValidDisplay || !songTitle.trim() || !songHtmlToText(slide.html).trim()} title={`Present slide ${index + 1}`} aria-label={`Present slide ${index + 1}`} className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded bg-emerald-700 text-white opacity-0 shadow transition-opacity hover:bg-emerald-600 focus:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"><Play size={13} /></button>
                     </div>)}
                   </div>

@@ -41,8 +41,27 @@ const checkForAppUpdates = async () => {
             const response = await net.fetch(`https://api.github.com/repos/${updateRepository.owner}/${updateRepository.repo}/releases/latest`, {
                 headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MediaGuy-Updater' },
             });
-            if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
-            const release = await response.json();
+            let release;
+            if (response.ok) {
+                release = await response.json();
+            } else if (response.status === 403) {
+                const releasePage = await net.fetch(`https://github.com/${updateRepository.owner}/${updateRepository.repo}/releases/latest`, {
+                    headers: { Accept: 'text/html', 'User-Agent': 'MediaGuy-Updater' },
+                });
+                if (!releasePage.ok) throw new Error(`GitHub API rate limit exceeded and release page returned HTTP ${releasePage.status}`);
+                const releaseUrl = new URL(releasePage.url);
+                const tag = releaseUrl.pathname.match(/\/releases\/tag\/([^/]+)$/)?.[1];
+                if (!tag) throw new Error('GitHub API rate limit exceeded and no latest release tag was found');
+                const decodedTag = decodeURIComponent(tag);
+                release = {
+                    tag_name: decodedTag,
+                    name: decodedTag,
+                    body: 'A new version is available. Open GitHub Releases to view the release notes and downloads.',
+                    html_url: releaseUrl.href,
+                };
+            } else {
+                throw new Error(`GitHub returned HTTP ${response.status}`);
+            }
             const version = String(release.tag_name || '').replace(/^v/, '');
             const parseVersion = value => String(value).split('.').map(part => Number.parseInt(part, 10));
             const currentParts = parseVersion(app.getVersion());
