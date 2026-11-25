@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Plus, Save, Trash2, Play, BookOpen, Music, Check, ChevronLeft, ChevronRight, History, Keyboard, RefreshCw, Settings2 } from 'lucide-react';
-import { ThemeSelector } from './ThemeSelector';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { Search, Plus, Save, Trash2, Play, BookOpen, Music, Check, ChevronRight, History, Keyboard, RefreshCw, Settings2, X, Globe, ExternalLink, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { ProjectionSettingsPanel } from './ProjectionSettingsPanel';
 import { useProjectionSettings } from './projectionSettings';
 import { ProjectionSurface } from './ProjectionSurface';
@@ -8,7 +7,11 @@ import { ProjectionSurface } from './ProjectionSurface';
 export type Verse = { book: number; book_name: string; chapter: number; verse: number; text: string };
 type BibleBook = { id: number; name: string };
 type BibleMobilePane = 'books' | 'chapters' | 'verses';
-type SavedSong = { id: string; title: string; lyrics: string; updatedAt: number };
+export type SongSlide = { html: string; fontFamily: string; fontSize: number; color: string; bold: boolean; italic: boolean; useGlobalStyle: boolean };
+type SavedSong = { id: string; title: string; lyrics: string; slides?: SongSlide[]; sourceUrl?: string; updatedAt: number };
+type OnlineResourceType = 'hymns' | 'manuals';
+type OnlineResource = { id: string; title: string; path: string; detail: string; number?: number; isLesson?: boolean };
+type ResourceNetworkStatus = 'checking' | 'online' | 'offline' | 'unavailable';
 type BibleTool = 'browse' | 'search' | 'history';
 type BibleReference = { id: string; label: string; verses: Verse[]; addedAt: number };
 type RemoteBibleCommand = { scope?: string; action?: string; bookId?: number; chapter?: number; verse?: number };
@@ -52,17 +55,203 @@ const readSongLibrary = (): SavedSong[] => {
   return title.trim() || lyrics.trim() ? [{ id: 'legacy-song', title: title.trim() || 'Untitled song', lyrics, updatedAt: Date.now() }] : [];
 };
 
+const DEFAULT_SONG_SLIDE: SongSlide = { html: '', fontFamily: 'Arial', fontSize: 44, color: '#ffffff', bold: true, italic: false, useGlobalStyle: false };
+const SONG_FONTS = ['Arial', 'Arial Black', 'Calibri', 'Cambria', 'Comic Sans MS', 'Consolas', 'Courier New', 'Georgia', 'Impact', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
+
+const escapeSongHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
+const sanitizeSongHtml = (html: string) => {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const cleanNode = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return escapeSongHtml(node.textContent || '').replace(/&amp;amp;/g, '&amp;').replace(/&amp;lt;/g, '&lt;').replace(/&amp;gt;/g, '&gt;');
+    if (!(node instanceof HTMLElement)) return '';
+    const children = Array.from(node.childNodes).map(cleanNode).join('');
+    if (node.tagName === 'BR') return '<br>';
+    if (['DIV', 'P'].includes(node.tagName)) return children === '<br>' ? '<br>' : `${children}<br>`;
+    if (['B', 'STRONG', 'I', 'EM', 'U'].includes(node.tagName)) return `<${node.tagName.toLowerCase()}>${children}</${node.tagName.toLowerCase()}>`;
+    if (node.tagName === 'SPAN') {
+      const color = node.style.color;
+      const safeColor = /^#[0-9a-f]{3,8}$/i.test(color) || /^rgb\([\d\s,]+\)$/i.test(color) ? color : '';
+      const styles = [safeColor ? `color:${safeColor}` : '', node.style.fontWeight === 'bold' || Number(node.style.fontWeight) >= 600 ? 'font-weight:bold' : '', node.style.fontStyle === 'italic' ? 'font-style:italic' : '', node.style.textDecorationLine.includes('underline') || node.style.textDecoration.includes('underline') ? 'text-decoration:underline' : ''].filter(Boolean).join(';');
+      return styles ? `<span style="${styles}">${children}</span>` : children;
+    }
+    return children;
+  };
+  return Array.from(parsed.body.childNodes).map(cleanNode).join('');
+};
+
+const songHtmlToText = (html: string) => {
+  const parsed = new DOMParser().parseFromString(sanitizeSongHtml(html).replace(/<br>/g, '<br>'), 'text/html');
+  return parsed.body.innerHTML.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(div|p)>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+};
+
+const splitSongDocument = (html: string, textFallback: string, previousSlides: SongSlide[]) => {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const groups: string[] = [];
+  let current: string[] = [];
+  let trailingSeparator = false;
+  const finishGroup = (separator = false) => {
+    const content = current.join('<br>').replace(/(?:<br>)+$/, '');
+    if (songHtmlToText(content).trim()) {
+      groups.push(content);
+      trailingSeparator = false;
+    } else if (separator) trailingSeparator = true;
+    current = [];
+  };
+  const appendText = (value: string) => {
+    const lines = value.replace(/\r\n?/g, '\n').split('\n');
+    lines.forEach((line, index) => {
+      if (line.trim()) current.push(escapeSongHtml(line));
+      else if (current.length) finishGroup(true);
+      if (index < lines.length - 1 && line.trim()) current.push('<br>');
+    });
+  };
+
+  const processNode = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      appendText(node.textContent || '');
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    if (node.tagName === 'BR') {
+      if (current.length && current[current.length - 1] !== '<br>') current.push('<br>');
+      else if (current.length) finishGroup(true);
+      return;
+    }
+    if (['DIV', 'P'].includes(node.tagName)) {
+      if (node.hasAttribute('data-song-stanza')) {
+        if (!node.textContent?.trim()) {
+          finishGroup(true);
+          return;
+        }
+        Array.from(node.childNodes).forEach(processNode);
+        return;
+      }
+      if (!node.textContent?.trim()) {
+        finishGroup(true);
+        return;
+      }
+      if (Array.from(node.children).some(child => ['DIV', 'P'].includes(child.tagName))) {
+        Array.from(node.childNodes).forEach(processNode);
+        return;
+      }
+      const blockHtml = sanitizeSongHtml(node.innerHTML);
+      if (blockHtml) current.push(blockHtml);
+      return;
+    }
+    const nodeHtml = sanitizeSongHtml(node.outerHTML);
+    if (nodeHtml) current.push(nodeHtml);
+  };
+  Array.from(parsed.body.childNodes).forEach(processNode);
+  finishGroup();
+  if (trailingSeparator) groups.push('');
+
+  if (!groups.length && textFallback.trim()) {
+    return textFallback.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map((part, index) => ({
+      ...(previousSlides[index] || DEFAULT_SONG_SLIDE),
+      html: escapeSongHtml(part),
+    }));
+  }
+  return groups.map((group, index) => ({
+    ...(previousSlides[index] || previousSlides[previousSlides.length - 1] || DEFAULT_SONG_SLIDE),
+    html: group,
+  }));
+};
+
+const legacySlides = (lyrics: string): SongSlide[] => lyrics.split(/\n\s*\n/).map(text => text.trim()).filter(Boolean).map(text => ({ ...DEFAULT_SONG_SLIDE, html: escapeSongHtml(text) }));
+
+const savedSongSlides = (song: SavedSong): SongSlide[] => Array.isArray(song.slides) && song.slides.length
+  ? song.slides.map(slide => ({ ...DEFAULT_SONG_SLIDE, ...slide, html: sanitizeSongHtml(slide.html || '') }))
+  : legacySlides(song.lyrics);
+
+const getRhemaResourceHtml = async (type: OnlineResourceType, query = '', detailPath = '') => {
+  if (window.electronAPI?.getRhemaResourcePage) {
+    const result = await window.electronAPI.getRhemaResourcePage({ type, query, detailPath });
+    if (!result.ok || !result.html) throw new Error(result.error || 'Could not load online resources.');
+    return result.html;
+  }
+  const searchParams = new URLSearchParams({ q: query });
+  if (type === 'hymns') {
+    searchParams.set('org', 'rccg');
+    searchParams.set('artifactId', 'rccg-the-redeemed-hymnal-4');
+  }
+  const path = detailPath || (query ? `/${type}/search?${searchParams.toString()}` : type === 'hymns' ? '/hymns/rccg-the-redeemed-hymnal-4' : '/manuals');
+  const response = await fetch(`/__rhema${path}`);
+  if (!response.ok) throw new Error(`getRhema returned HTTP ${response.status}.`);
+  return response.text();
+};
+
+const parseGetRhemaResources = (html: string, type: OnlineResourceType): OnlineResource[] => {
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  if (type === 'hymns') {
+    const resources = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
+      .map(anchor => {
+        const path = new URL(anchor.getAttribute('href') || '', 'https://getrhema.net').pathname;
+        const match = path.match(/^\/hymns\/rccg-the-redeemed-hymnal-4\/(\d+)$/);
+        if (!match) return null;
+        const row = anchor.closest('tr');
+        const number = Number(match[1]);
+        const detail = row?.innerText.replace(anchor.innerText, '').replace(/^\s*\d+\s*/, '').trim() || `Hymn ${number}`;
+        return { id: path, title: anchor.innerText.trim(), path, detail, number };
+      })
+      .filter((resource): resource is NonNullable<typeof resource> => Boolean(resource?.title));
+    return Array.from(new Map(resources.map(resource => [resource.path, resource])).values()).sort((left, right) => (left.number || 0) - (right.number || 0));
+  }
+
+  const resources: OnlineResource[] = [];
+  for (const anchor of Array.from(document.querySelectorAll<HTMLAnchorElement>('main a[href^="/manuals/"]'))) {
+    const path = new URL(anchor.getAttribute('href') || '', 'https://getrhema.net').pathname;
+    const lessonMatch = path.match(/^\/manuals\/([a-z0-9-]+)\/lesson-(\d+)$/);
+    if (lessonMatch) {
+      const title = anchor.innerText.trim();
+      const rowText = anchor.closest('tr')?.innerText || '';
+      const detail = rowText.replace(title, '').trim() || `Lesson ${lessonMatch[2]}`;
+      if (title) resources.push({ id: path, title, path, detail, number: Number(lessonMatch[2]), isLesson: true });
+      continue;
+    }
+    if (!/^\/manuals\/[a-z0-9-]+$/.test(path)) continue;
+    let parent: HTMLElement | null = anchor.parentElement;
+    let heading: HTMLHeadingElement | null = null;
+    while (parent && parent !== document.body && !heading) {
+      heading = parent.querySelector('h2');
+      if (parent.innerText.length > 1200) break;
+      parent = parent.parentElement;
+    }
+    const title = heading?.textContent?.trim() || '';
+    if (!title) continue;
+    const card = heading?.parentElement?.parentElement;
+    const detail = card?.innerText.replace(title, '').replace(/VIEW ALL \d+ LESSONS/ig, '').trim() || 'Sunday School manual';
+    resources.push({ id: path, title, path, detail });
+  }
+  return Array.from(new Map(resources.map(resource => [resource.path, resource])).values());
+};
+
+const parseGetRhemaHymnLyrics = (html: string) => {
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  const title = document.querySelector('main h1')?.textContent?.trim() || '';
+  const verses = Array.from(document.querySelectorAll('main h2'))
+    .filter(heading => /^VERSE\s+\d+/i.test(heading.textContent?.trim() || ''))
+    .map(heading => {
+      let next = heading.nextElementSibling;
+      while (next && next.tagName !== 'P' && next.tagName !== 'DIV') next = next.nextElementSibling;
+      const verseText = next instanceof HTMLElement ? next.innerText : next?.textContent || '';
+      return verseText.replace(/\s*\n\s*/g, '\n').trim();
+    })
+    .filter(Boolean);
+  return { title, lyrics: verses.join('\n\n') };
+};
+
 interface BibleSongsTabProps {
   availableDisplays: Array<{ id: number; label: string; isPrimary: boolean }>;
   selectedDisplay: number | null;
   onDisplayChange: (displayId: number) => void;
   onRefreshDisplays: () => void;
   projectBible: (verses: Verse[], options?: { referenceOnly?: boolean; description?: string }) => void;
+  projectSong: (title: string, slide: SongSlide) => void;
+  clearProjection: () => void;
   testDisplay?: () => void;
   isProjecting: boolean;
   onCloseProjection: () => void;
-  selectedTheme: string;
-  onThemeChange: (themeId: string) => void;
 }
 
 const bookColors = [
@@ -114,11 +303,11 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
   onDisplayChange,
   onRefreshDisplays,
   projectBible,
+  projectSong,
+  clearProjection,
   testDisplay,
   isProjecting,
   onCloseProjection,
-  selectedTheme,
-  onThemeChange,
 }) => {
   const [innerTab, setInnerTab] = useState<'bible' | 'songs'>('bible');
   const [mobileBiblePane, setMobileBiblePane] = useState<BibleMobilePane>('books');
@@ -162,20 +351,90 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
 
   // Songs State
   const [savedSongs, setSavedSongs] = useState<SavedSong[]>(readSongLibrary);
-  const [songTitle, setSongTitle] = useState(() => localStorage.getItem('songEditorTitle') || '');
-  const [songLyrics, setSongLyrics] = useState(() => localStorage.getItem('songEditorSlides') || '');
+  const initialSongId = localStorage.getItem('songEditorSelectedId');
+  const initialSavedSong = savedSongs.find(song => song.id === initialSongId);
+  const [songTitle, setSongTitle] = useState(() => initialSavedSong?.title || localStorage.getItem('songEditorTitle') || '');
+  const [songSlides, setSongSlides] = useState<SongSlide[]>(() => {
+    if (initialSavedSong) return savedSongSlides(initialSavedSong);
+    const slides = legacySlides(localStorage.getItem('songEditorSlides') || '');
+    return slides.length ? slides : [{ ...DEFAULT_SONG_SLIDE }];
+  });
+  const slideEditorRef = useRef<HTMLDivElement>(null);
+  const songSelectionRef = useRef<Range | null>(null);
   const [songSearch, setSongSearch] = useState('');
   const [selectedSongId, setSelectedSongId] = useState<string | null>(() => {
-    const savedId = localStorage.getItem('songEditorSelectedId');
-    if (savedSongs.some(song => song.id === savedId)) return savedId;
+    if (initialSavedSong) return initialSavedSong.id;
     const title = localStorage.getItem('songEditorTitle') || '';
-    const lyrics = localStorage.getItem('songEditorSlides') || '';
-    return savedSongs.find(song => song.title === title && song.lyrics === lyrics)?.id ?? null;
+    const lyrics = songSlides.map(slide => songHtmlToText(slide.html).trim()).join('\n\n');
+    return savedSongs.find(song => song.title === title && (song.slides ? song.slides.map(slide => songHtmlToText(slide.html)).join('\n\n') : song.lyrics) === lyrics)?.id ?? null;
   });
   const [songSaveMessage, setSongSaveMessage] = useState('');
+  const [songSourceUrl, setSongSourceUrl] = useState(() => initialSavedSong?.sourceUrl || localStorage.getItem('songEditorSourceUrl') || '');
   const [activeSlide, setActiveSlide] = useState(0);
-  const songSlides = songLyrics.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-  const currentSongSlide = songSlides[activeSlide] || '';
+  const [showOnlineResources, setShowOnlineResources] = useState(false);
+  const [onlineResourceType, setOnlineResourceType] = useState<OnlineResourceType>('hymns');
+  const [onlineResourceSearch, setOnlineResourceSearch] = useState('');
+  const [onlineResources, setOnlineResources] = useState<OnlineResource[]>([]);
+  const [onlineResourcesLoading, setOnlineResourcesLoading] = useState(false);
+  const [onlineResourcesError, setOnlineResourcesError] = useState('');
+  const [onlineResourceNetworkStatus, setOnlineResourceNetworkStatus] = useState<ResourceNetworkStatus>('checking');
+  const [onlineResourceLoadingPath, setOnlineResourceLoadingPath] = useState('');
+  const [selectedManualResource, setSelectedManualResource] = useState<OnlineResource | null>(null);
+  const onlineResourceRequest = useRef(0);
+  const [liveSong, setLiveSong] = useState<{ title: string; slide: number } | null>(null);
+  const [editorSyncKey, setEditorSyncKey] = useState(0);
+  const currentSongSlide = songSlides[activeSlide] || DEFAULT_SONG_SLIDE;
+  const songDocumentHtml = songSlides.map((slide, index) => `<div data-song-stanza="${index}">${slide.html || '<br>'}</div>${index < songSlides.length - 1 ? '<div><br></div>' : ''}`).join('');
+  const songDocumentHtmlRef = useRef(songDocumentHtml);
+  songDocumentHtmlRef.current = songDocumentHtml;
+
+  useLayoutEffect(() => {
+    if (!slideEditorRef.current) return;
+    if (slideEditorRef.current.innerHTML !== songDocumentHtmlRef.current) slideEditorRef.current.innerHTML = songDocumentHtmlRef.current;
+  }, [innerTab, selectedSongId, editorSyncKey]);
+
+  useEffect(() => {
+    if (!showOnlineResources) return;
+    const requestId = ++onlineResourceRequest.current;
+    setOnlineResourceNetworkStatus('checking');
+    setOnlineResourcesLoading(true);
+    setOnlineResourcesError('');
+    if (!navigator.onLine) {
+      setOnlineResources([]);
+      setOnlineResourceNetworkStatus('offline');
+      setOnlineResourcesLoading(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void getRhemaResourceHtml(onlineResourceType, onlineResourceSearch.trim()).then(html => {
+        if (onlineResourceRequest.current !== requestId) return;
+        setOnlineResources(parseGetRhemaResources(html, onlineResourceType));
+        setOnlineResourceNetworkStatus('online');
+      }).catch(error => {
+        if (onlineResourceRequest.current !== requestId) return;
+        setOnlineResources([]);
+        void window.electronAPI?.checkInternetConnection?.().then(connection => {
+          if (onlineResourceRequest.current !== requestId) return;
+          const offline = !connection.online;
+          setOnlineResourceNetworkStatus(offline ? 'offline' : 'unavailable');
+          setOnlineResourcesError(offline ? '' : error instanceof Error ? error.message : 'getRhema is temporarily unavailable.');
+        }).catch(() => {
+          if (onlineResourceRequest.current !== requestId) return;
+          const offline = !navigator.onLine;
+          setOnlineResourceNetworkStatus(offline ? 'offline' : 'unavailable');
+          setOnlineResourcesError(offline ? '' : error instanceof Error ? error.message : 'getRhema is temporarily unavailable.');
+        });
+        if (!window.electronAPI?.checkInternetConnection) {
+          const offline = !navigator.onLine;
+          setOnlineResourceNetworkStatus(offline ? 'offline' : 'unavailable');
+          setOnlineResourcesError(offline ? '' : error instanceof Error ? error.message : 'getRhema is temporarily unavailable.');
+        }
+      }).finally(() => {
+        if (onlineResourceRequest.current === requestId) setOnlineResourcesLoading(false);
+      });
+    }, onlineResourceSearch.trim() ? 260 : 0);
+    return () => window.clearTimeout(timeout);
+  }, [showOnlineResources, onlineResourceType, onlineResourceSearch]);
 
   // Load Bible Data
   useEffect(() => {
@@ -666,8 +925,13 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
 
   useEffect(() => {
     localStorage.setItem('songEditorTitle', songTitle);
-    localStorage.setItem('songEditorSlides', songLyrics);
-  }, [songTitle, songLyrics]);
+    localStorage.setItem('songEditorSlides', songSlides.map(slide => songHtmlToText(slide.html).trim()).join('\n\n'));
+  }, [songTitle, songSlides]);
+
+  useEffect(() => {
+    if (songSourceUrl) localStorage.setItem('songEditorSourceUrl', songSourceUrl);
+    else localStorage.removeItem('songEditorSourceUrl');
+  }, [songSourceUrl]);
 
   useEffect(() => {
     setActiveSlide(idx => Math.min(idx, Math.max(0, songSlides.length - 1)));
@@ -683,7 +947,7 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
 
   const filteredBooks = books.filter(b => b.name.toLowerCase().includes(bookFilter.toLowerCase()));
   const filteredSongs = savedSongs
-    .filter(song => song.title.toLowerCase().includes(songSearch.trim().toLowerCase()))
+    .filter(song => `${song.title} ${song.lyrics}`.toLowerCase().includes(songSearch.trim().toLowerCase()))
     .sort((left, right) => right.updatedAt - left.updatedAt);
 
   const saveSong = () => {
@@ -693,7 +957,7 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
       return;
     }
     const id = selectedSongId || `song-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const song = { id, title, lyrics: songLyrics, updatedAt: Date.now() };
+    const song = { id, title, lyrics: songSlides.map(slide => songHtmlToText(slide.html).trim()).join('\n\n'), slides: songSlides, sourceUrl: songSourceUrl || undefined, updatedAt: Date.now() };
     setSavedSongs(previous => previous.some(item => item.id === id)
       ? previous.map(item => item.id === id ? song : item)
       : [song, ...previous]);
@@ -704,16 +968,20 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
   const startNewSong = () => {
     setSelectedSongId(null);
     setSongTitle('');
-    setSongLyrics('');
+    setSongSourceUrl('');
+    setSongSlides([{ ...DEFAULT_SONG_SLIDE }]);
     setActiveSlide(0);
-    setSongSaveMessage('New song draft. Save it to add it to your library.');
+    setEditorSyncKey(key => key + 1);
+    setSongSaveMessage('');
   };
 
   const openSong = (song: SavedSong) => {
     setSelectedSongId(song.id);
     setSongTitle(song.title);
-    setSongLyrics(song.lyrics);
+    setSongSourceUrl(song.sourceUrl || '');
+    setSongSlides(savedSongSlides(song));
     setActiveSlide(0);
+    setEditorSyncKey(key => key + 1);
     setSongSaveMessage('');
   };
 
@@ -724,12 +992,165 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
     setSongSaveMessage(`Deleted "${song.title}".`);
   };
 
+  const updateSongSlide = (index: number, patch: Partial<SongSlide>) => {
+    setSongSlides(previous => previous.map((slide, slideIndex) => slideIndex === index ? { ...slide, ...patch } : slide));
+    setSongSaveMessage('');
+  };
+
+  const handleSlideInput = (rawHtml: string, rawText: string, editor: HTMLDivElement) => {
+    const parsedSlides = splitSongDocument(rawHtml, rawText, songSlides);
+    setSongSlides(parsedSlides.length ? parsedSlides : [{ ...DEFAULT_SONG_SLIDE }]);
+    setActiveSlide(index => Math.min(index, Math.max(0, parsedSlides.length - 1)));
+    let stanzaIndex = 0;
+    for (const block of Array.from(editor.querySelectorAll<HTMLElement>('div, p'))) {
+      if (!block.textContent?.trim()) {
+        block.removeAttribute('data-song-stanza');
+        stanzaIndex += 1;
+      } else {
+        block.dataset.songStanza = String(stanzaIndex);
+      }
+    }
+    setSongSaveMessage('');
+  };
+
+  const applyRichFormat = (command: 'bold' | 'italic' | 'underline' | 'foreColor', value?: string) => {
+    const editor = slideEditorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    if (songSelectionRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(songSelectionRef.current);
+    }
+    editor.focus();
+    if (command === 'foreColor') document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand(command, false, value);
+    handleSlideInput(editor.innerHTML, editor.innerText, editor);
+    songSelectionRef.current = null;
+  };
+
+  const rememberSongSelection = () => {
+    const editor = slideEditorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount || !selection.anchorNode || !editor.contains(selection.anchorNode)) return;
+    const range = selection.getRangeAt(0);
+    songSelectionRef.current = range.cloneRange();
+    const prefix = document.createElement('div');
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(editor);
+    prefixRange.setEnd(range.startContainer, range.startOffset);
+    prefix.appendChild(prefixRange.cloneContents());
+    const stanzaIndex = Array.from(prefix.querySelectorAll('div, p')).filter(block => !block.textContent?.trim()).length;
+    setActiveSlide(Math.min(stanzaIndex, Math.max(0, songSlides.length - 1)));
+  };
+
+  const jumpToStanza = (index: number) => {
+    setActiveSlide(index);
+    const editor = slideEditorRef.current;
+    const stanza = editor?.querySelector<HTMLElement>(`[data-song-stanza="${index}"]`);
+    if (!editor || !stanza) return;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(stanza);
+    range.collapse(true);
+    editor.focus();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    songSelectionRef.current = range.cloneRange();
+    stanza.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+
+  const addSongSlide = () => {
+    setSongSlides(previous => [...previous, { ...DEFAULT_SONG_SLIDE }]);
+    setActiveSlide(songSlides.length);
+    setSongSaveMessage('');
+  };
+
+  const loadOnlineHymn = async (resource: OnlineResource) => {
+    setOnlineResourceLoadingPath(resource.path);
+    setOnlineResourcesError('');
+    try {
+      const html = await getRhemaResourceHtml('hymns', '', resource.path);
+      const hymn = parseGetRhemaHymnLyrics(html);
+      if (!hymn.lyrics) throw new Error('No verse text was found on the hymn page. Open the source page to review it.');
+      setSongTitle(hymn.title || resource.title);
+      setSongSourceUrl(`https://getrhema.net${resource.path}`);
+      setSongSlides(legacySlides(hymn.lyrics));
+      setSelectedSongId(null);
+      setActiveSlide(0);
+      setEditorSyncKey(key => key + 1);
+      setSongSaveMessage('Hymn imported. Cross-check the lyrics and slides, then save.');
+      setShowOnlineResources(false);
+      setInnerTab('songs');
+    } catch (error) {
+      setOnlineResourcesError(error instanceof Error ? error.message : 'Could not load this hymn.');
+    } finally {
+      setOnlineResourceLoadingPath('');
+    }
+  };
+
+  const openManualResource = (resource: OnlineResource) => {
+    const url = `https://getrhema.net${resource.path}`;
+    if (window.electronAPI?.openExternalUrl) window.electronAPI.openExternalUrl(url);
+    else window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const presentSongSlide = (index: number) => {
+    const title = songTitle.trim();
+    const slide = songSlides[index];
+    if (!title || !slide || !songHtmlToText(slide.html).trim() || !hasValidDisplay) return;
+    projectSong(title, slide);
+    setActiveSlide(index);
+    setLiveSong({ title, slide: index });
+  };
+
+  const presentActiveSongSlide = () => presentSongSlide(activeSlide);
+
+  const clearSongOutput = () => {
+    clearProjection();
+    setLiveSong(null);
+  };
+
+  useEffect(() => {
+    if (innerTab !== 'songs') return;
+    const handleSongKeys = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName))) return;
+      if (event.key === 'ArrowLeft' && songSlides.length > 0) {
+        event.preventDefault();
+        setActiveSlide(index => Math.max(0, index - 1));
+      } else if (event.key === 'ArrowRight' && songSlides.length > 0) {
+        event.preventDefault();
+        setActiveSlide(index => Math.min(songSlides.length - 1, index + 1));
+      } else if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
+        event.preventDefault();
+        const title = songTitle.trim();
+        const slide = songSlides[activeSlide];
+        if (title && slide && songHtmlToText(slide.html).trim() && hasValidDisplay) {
+          projectSong(title, slide);
+          setLiveSong({ title, slide: activeSlide });
+        }
+      } else if (event.key === 'Escape' && isProjecting) {
+        event.preventDefault();
+        clearProjection();
+        setLiveSong(null);
+      }
+    };
+    window.addEventListener('keydown', handleSongKeys);
+    return () => window.removeEventListener('keydown', handleSongKeys);
+  }, [innerTab, songSlides, activeSlide, songTitle, hasValidDisplay, isProjecting, projectSong, clearProjection]);
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-gray-900 text-white">
       {innerTab === 'songs' && (
-        <div className="flex min-h-10 items-center justify-between gap-2 border-b border-gray-700 bg-gray-800 px-2 py-1">
-          <button type="button" onClick={() => setInnerTab('bible')} className="inline-flex min-h-8 items-center gap-1.5 rounded px-3 text-xs font-bold text-gray-200 hover:bg-gray-700"><BookOpen size={14} /> Bible</button>
-          <span className="text-xs font-semibold text-gray-400">Songs</span>
+        <div className="flex min-h-10 items-center gap-2 border-b border-gray-700 bg-gray-900 px-2 py-1">
+          <button type="button" onClick={() => setInnerTab('bible')} className="inline-flex min-h-8 items-center gap-1.5 rounded px-3 text-xs font-bold text-gray-400 hover:bg-gray-800 hover:text-white"><BookOpen size={14} /> Bible</button>
+          <span className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded bg-gray-700 px-3 text-xs font-bold text-white"><Music size={14} /> Songs</span>
+          <select value={hasValidDisplay ? selectedDisplay ?? '' : ''} onChange={event => onDisplayChange(Number(event.target.value))} aria-label="Projection display" className="min-h-8 max-w-40 rounded border border-gray-700 bg-gray-900 px-2 text-[10px] font-bold text-gray-200">
+            <option value="" disabled>{externalDisplays.length ? 'Choose screen' : window.electronAPI?.getDisplays ? 'No external screen' : 'Desktop app required'}</option>
+            {externalDisplays.map(display => <option key={display.id} value={display.id}>{display.label}</option>)}
+          </select>
+          <button type="button" onClick={onRefreshDisplays} title="Refresh displays" aria-label="Refresh displays" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-800 text-gray-300 hover:bg-gray-700"><RefreshCw size={14} /></button>
+          {testDisplay && <button type="button" onClick={testDisplay} disabled={!hasValidDisplay} title="Test selected display" aria-label="Test selected display" className="inline-flex h-8 items-center gap-1 rounded bg-gray-800 px-2 text-[10px] font-semibold text-gray-300 hover:bg-gray-700 disabled:opacity-40"><Play size={12} /> Test</button>}
         </div>
       )}
 
@@ -746,8 +1167,8 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
                 <Icon size={14} /> {label}
               </button>
             ))}
-            <button type="button" onClick={() => setInnerTab('songs')} className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded px-2.5 text-xs font-bold text-gray-400 hover:bg-gray-800 hover:text-white"><Music size={14} /> Songs</button>
             <button type="button" onClick={() => setShowBibleSettings(true)} title="Bible projection settings" aria-label="Bible projection settings" className="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded bg-gray-800 px-2.5 text-xs font-semibold text-gray-200 hover:bg-gray-700"><Settings2 size={14} /> Settings</button>
+            <button type="button" onClick={() => setInnerTab('songs')} className="ml-auto inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded px-2.5 text-xs font-bold text-gray-400 hover:bg-gray-800 hover:text-white"><Music size={14} /> Songs</button>
             <span className="ml-auto hidden items-center gap-1 whitespace-nowrap px-2 text-[10px] text-gray-500 xl:inline-flex"><Keyboard size={12} /> Type to jump</span>
             <select value={hasValidDisplay ? selectedDisplay ?? '' : ''} onChange={event => onDisplayChange(Number(event.target.value))} aria-label="Projection display" className="min-h-8 max-w-36 shrink-0 rounded border border-gray-700 bg-gray-900 px-2 text-[10px] font-bold text-gray-200">
               <option value="" disabled>{externalDisplays.length ? 'Choose screen' : window.electronAPI?.getDisplays ? 'No external screen' : 'Desktop app required'}</option>
@@ -1067,117 +1488,121 @@ export const BibleSongsTab: React.FC<BibleSongsTabProps> = ({
 
       {/* Songs Tab Content */}
       {innerTab === 'songs' && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          <section className="mx-auto mb-5 w-full max-w-7xl border-b border-gray-700 pb-4" aria-label="Song library">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-white">Song library</h2>
-                <p className="mt-0.5 text-xs text-gray-400">{savedSongs.length} saved {savedSongs.length === 1 ? 'song' : 'songs'} on this device</p>
+        <div className="flex-1 min-h-0 overflow-hidden bg-gray-950">
+          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-1">
+            <aside className="flex min-h-0 flex-col border-b border-gray-700 bg-gray-900 p-3 lg:border-b-0 lg:border-r" aria-label="Song resources">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Song resources</h2>
+                  <p className="mt-0.5 text-[11px] text-gray-500">{savedSongs.length} songs</p>
+                </div>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => { setOnlineResourceType('hymns'); setOnlineResourceSearch(''); setOnlineResourcesError(''); setSelectedManualResource(null); setShowOnlineResources(true); }} title="Browse online hymns and manuals" aria-label="Online resources" className="inline-flex h-9 items-center gap-1.5 rounded border border-gray-700 px-2 text-[10px] font-semibold text-gray-200 hover:bg-gray-800"><Globe size={14} /> Online</button>
+                  <button type="button" onClick={startNewSong} title="New song" aria-label="New song" className="inline-flex h-9 w-9 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-500"><Plus size={16} /></button>
+                </div>
               </div>
-              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <label className="relative min-w-[9rem] flex-1 sm:w-56 sm:flex-none">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={15} />
-                  <input
-                    type="search"
-                    value={songSearch}
-                    onChange={event => setSongSearch(event.target.value)}
-                    placeholder="Search saved songs"
-                    aria-label="Search saved songs"
-                    className="min-h-10 w-full rounded-lg border border-gray-700 bg-gray-900 py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-blue-500"
-                  />
-                </label>
-                <button type="button" onClick={startNewSong} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-gray-600 px-3 text-sm font-semibold text-gray-200 hover:bg-gray-800"><Plus size={15} /> New</button>
-                <button type="button" onClick={saveSong} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500"><Save size={15} /> {selectedSongId ? 'Save changes' : 'Save song'}</button>
-              </div>
-            </div>
-
-            {songSaveMessage && <p role="status" className="mt-2 text-xs text-emerald-300">{songSaveMessage}</p>}
-
-            {savedSongs.length > 0 ? (
-              <div className="mt-3 grid max-h-36 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
+              <label className="relative mb-2 block shrink-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                <input type="search" value={songSearch} onChange={event => setSongSearch(event.target.value)} placeholder="Search title or lyrics" aria-label="Search songs" className="h-9 w-full rounded border border-gray-700 bg-gray-950 pl-8 pr-2 text-xs text-white outline-none focus:border-cyan-500" />
+              </label>
+              <div className="flex min-h-0 gap-1 overflow-x-auto lg:flex-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto">
                 {filteredSongs.map(song => {
                   const slideCount = song.lyrics.split(/\n\s*\n/).map(slide => slide.trim()).filter(Boolean).length;
                   return (
-                    <div key={song.id} className={`flex min-w-0 items-center rounded-lg border ${selectedSongId === song.id ? 'border-blue-500 bg-blue-950/30' : 'border-gray-700 bg-gray-900/60'}`}>
-                      <button type="button" onClick={() => openSong(song)} aria-pressed={selectedSongId === song.id} className="min-h-12 min-w-0 flex-1 px-3 py-2 text-left hover:bg-white/5">
-                        <span className="block truncate text-sm font-semibold text-white">{song.title}</span>
-                        <span className="mt-0.5 block text-[11px] text-gray-500">{slideCount} {slideCount === 1 ? 'slide' : 'slides'}</span>
+                    <div key={song.id} className={`group flex min-w-44 shrink-0 items-center border-l-2 ${selectedSongId === song.id ? 'border-cyan-400 bg-gray-800' : 'border-transparent hover:bg-gray-800/70'}`}>
+                      <button type="button" onClick={() => openSong(song)} aria-pressed={selectedSongId === song.id} className="min-h-14 min-w-0 flex-1 px-3 py-2 text-left">
+                        <span className="block truncate text-xs font-semibold text-gray-100">{song.title}</span>
+                        <span className="mt-1 block truncate text-[10px] text-gray-500">{song.lyrics.split(/\s+/).slice(0, 9).join(' ') || 'No lyrics'} · {slideCount} slides</span>
                       </button>
-                      <button type="button" onClick={() => deleteSong(song)} title={`Delete ${song.title}`} aria-label={`Delete ${song.title}`} className="mr-1 rounded p-2 text-gray-500 hover:bg-red-950 hover:text-red-300"><Trash2 size={15} /></button>
+                      <button type="button" onClick={() => deleteSong(song)} title={`Delete ${song.title}`} aria-label={`Delete ${song.title}`} className="mr-1 rounded p-1.5 text-gray-500 opacity-60 hover:bg-red-950 hover:text-red-300 group-hover:opacity-100"><Trash2 size={13} /></button>
                     </div>
                   );
                 })}
-                {filteredSongs.length === 0 && <p className="px-2 py-4 text-sm text-gray-500">No saved songs match that search.</p>}
+                {filteredSongs.length === 0 && <div className="px-2 py-5 text-xs text-gray-500">{savedSongs.length ? 'No songs match this search.' : 'Your library is empty.'}</div>}
               </div>
-            ) : (
-              <p className="mt-3 rounded-lg bg-gray-900/60 px-3 py-3 text-sm text-gray-400">No saved songs yet. Add a title and slide text below, then choose Save song.</p>
-            )}
-          </section>
+            </aside>
 
-          <div className="mx-auto grid w-full max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
-            <section className="space-y-5">
-              <header className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-700 pb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-white">Song editor</h2>
-                  <p className="mt-1 text-sm text-gray-400">Prepare lyrics you are authorized to display. Separate slides with a blank line.</p>
-                </div>
+            <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+              <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-2">
+                <input value={songTitle} onChange={event => { setSongTitle(event.target.value); setSongSaveMessage(''); }} placeholder="Untitled song" aria-label="Song title" className="h-9 min-w-36 flex-1 border-b border-gray-700 bg-transparent px-1 text-sm font-bold text-white outline-none placeholder:text-gray-500 focus:border-cyan-400 sm:max-w-sm" />
+                <span className="hidden text-[11px] text-gray-500 sm:inline">{songSlides.length} slides</span>
+                {songSourceUrl && <button type="button" onClick={() => { if (window.electronAPI?.openExternalUrl) window.electronAPI.openExternalUrl(songSourceUrl); else window.open(songSourceUrl, '_blank', 'noopener,noreferrer'); }} title="Open song source" aria-label="Open song source" className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-white"><ExternalLink size={14} /></button>}
+                <button type="button" onClick={saveSong} className="inline-flex h-9 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-500"><Save size={14} /> Save</button>
+                {songSaveMessage && <span role="status" className="basis-full text-[11px] text-emerald-300 sm:basis-auto">{songSaveMessage}</span>}
               </header>
 
-              <label className="block space-y-2 text-sm font-semibold text-gray-300">
-                Song title
-                <input
-                  value={songTitle}
-                  onChange={event => { setSongTitle(event.target.value); setSongSaveMessage(''); }}
-                  placeholder="Enter a song title"
-                  className="w-full border border-gray-700 bg-gray-900 px-4 py-3 text-white placeholder:text-gray-500 rounded-xl"
-                />
-              </label>
+              <div className="grid min-h-0 grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.2fr)] overflow-hidden">
+                <section className="flex min-h-0 flex-col border-r border-gray-800" aria-label="Full song lyrics editor">
+                  <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-3 py-2"><div><h3 className="text-xs font-bold text-white">Lyrics</h3><p className="mt-0.5 text-[10px] text-gray-500">Blank lines divide slides · {songSlides.length} total</p></div><div className="flex items-center gap-1"><button type="button" onMouseDown={event => event.preventDefault()} onClick={() => applyRichFormat('bold')} title="Bold selected text" aria-label="Bold selected text" className="h-7 w-8 rounded bg-gray-800 text-sm font-black text-white hover:bg-gray-700">B</button><button type="button" onMouseDown={event => event.preventDefault()} onClick={() => applyRichFormat('italic')} title="Italic selected text" aria-label="Italic selected text" className="h-7 w-8 rounded bg-gray-800 text-sm italic text-white hover:bg-gray-700">I</button><button type="button" onMouseDown={event => event.preventDefault()} onClick={() => applyRichFormat('underline')} title="Underline selected text" aria-label="Underline selected text" className="h-7 w-8 rounded bg-gray-800 text-sm text-white underline hover:bg-gray-700">U</button><label className="flex h-7 items-center gap-1 rounded bg-gray-800 px-1.5 text-[10px] text-gray-300"><span>A</span><input type="color" defaultValue="#ffffff" onChange={event => applyRichFormat('foreColor', event.target.value)} aria-label="Color selected text" className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0" /></label></div></div>
+                  <ProjectionSurface settings={projectionSettings} songText={songDocumentHtml} songStyle={currentSongSlide} editableSong songEditorRef={slideEditorRef} songEditorSyncKey={`${selectedSongId || 'draft'}:${editorSyncKey}`} songPlaceholder="Type or paste the whole song here. Leave a blank line between stanzas to create slides." onSongHtmlChange={handleSlideInput} onSongSelectionChange={rememberSongSelection} className="song-document-surface online-resource-scrollbar h-full w-full min-h-0 flex-1" />
+                </section>
 
-              <label className="block space-y-2 text-sm font-semibold text-gray-300">
-                Slide text
-                <textarea
-                  value={songLyrics}
-                  onChange={event => { setSongLyrics(event.target.value); setSongSaveMessage(''); }}
-                  placeholder={'Paste or type authorized lyrics here.\n\nUse a blank line between slides.'}
-                  rows={10}
-                  className="w-full resize-y border border-gray-700 bg-gray-900 px-4 py-3 leading-relaxed text-white placeholder:text-gray-500 rounded-xl"
-                />
-              </label>
-
-              <ThemeSelector selectedTheme={selectedTheme} onChange={onThemeChange} />
-            </section>
-
-            <section className="space-y-5 border-t border-gray-700 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-bold uppercase text-gray-400">Slide Preview</h3>
-                <span className="font-mono text-sm text-gray-400">{songSlides.length ? activeSlide + 1 : 0} / {songSlides.length}</span>
+                <section className="flex min-h-0 flex-col bg-gray-950" aria-label="All song slide previews">
+                  <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-3 py-2"><div><h3 className="text-xs font-bold text-white">Slide previews</h3><p className="mt-0.5 text-[10px] text-gray-500">Select any preview to jump to that stanza</p></div><div className="flex items-center gap-2"><span className="text-[10px] text-gray-500">{songSlides.length} total</span><button type="button" onClick={addSongSlide} title="Add empty slide" aria-label="Add empty slide" className="inline-flex h-7 w-7 items-center justify-center rounded bg-gray-800 text-gray-200 hover:bg-gray-700"><Plus size={14} /></button></div></div>
+                  <div className="online-resource-scrollbar grid min-h-0 flex-1 auto-rows-[minmax(8rem,1fr)] grid-cols-2 gap-2 overflow-y-auto p-2 xl:grid-cols-3" role="list" aria-label="Slides">
+                    {songSlides.map((slide, index) => <div key={index} className={`group relative flex min-h-0 flex-col overflow-hidden border ${activeSlide === index ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-gray-700 hover:border-gray-500'}`}>
+                      <button type="button" onClick={() => jumpToStanza(index)} aria-label={`Select slide ${index + 1}`} aria-pressed={activeSlide === index} className="flex min-h-0 flex-1 flex-col text-left"><div className="min-h-0 flex-1 overflow-hidden"><ProjectionSurface settings={projectionSettings} songText={slide.html || 'Empty slide'} songStyle={slide} className="h-full w-full" /></div><span className="flex h-6 shrink-0 items-center justify-between bg-gray-900 px-2 text-[10px] text-gray-300"><span>Slide {String(index + 1).padStart(2, '0')}</span>{liveSong?.title === songTitle && liveSong.slide === index && isProjecting && <span className="font-bold text-emerald-300">LIVE</span>}</span></button>
+                      <button type="button" onClick={() => presentSongSlide(index)} disabled={!hasValidDisplay || !songTitle.trim() || !songHtmlToText(slide.html).trim()} title={`Present slide ${index + 1}`} aria-label={`Present slide ${index + 1}`} className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded bg-emerald-700 text-white opacity-0 shadow transition-opacity hover:bg-emerald-600 focus:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"><Play size={13} /></button>
+                    </div>)}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-gray-800 bg-gray-900 px-3 py-2"><span className="mr-auto text-[10px] font-bold uppercase text-gray-500">{isProjecting && liveSong ? `LIVE · ${liveSong.title} · ${liveSong.slide + 1}` : hasValidDisplay ? 'Output ready' : 'Connect a display'}</span><span className="text-[10px] text-gray-500">Slide {activeSlide + 1} style</span><button type="button" onClick={() => updateSongSlide(activeSlide,{bold:!currentSongSlide.bold})} aria-label="Toggle slide bold" aria-pressed={currentSongSlide.bold} className={`h-8 w-8 rounded text-sm font-black ${currentSongSlide.bold?'bg-cyan-800 text-white':'bg-gray-800 text-gray-300'}`}>B</button><button type="button" onClick={() => updateSongSlide(activeSlide,{italic:!currentSongSlide.italic})} aria-label="Toggle slide italic" aria-pressed={currentSongSlide.italic} className={`h-8 w-8 rounded text-sm italic ${currentSongSlide.italic?'bg-cyan-800 text-white':'bg-gray-800 text-gray-300'}`}>I</button><label className="flex h-8 items-center gap-1 text-[10px] text-gray-400"><span>Color</span><input type="color" value={currentSongSlide.color} onChange={event=>updateSongSlide(activeSlide,{color:event.target.value})} aria-label="Slide text color" className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0" /></label><select value={currentSongSlide.fontFamily} onChange={event => updateSongSlide(activeSlide, { fontFamily: event.target.value })} aria-label="Slide font" className="h-8 max-w-36 rounded border border-gray-700 bg-gray-950 px-2 text-[10px] text-gray-200">{SONG_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</select><select value={currentSongSlide.fontSize} onChange={event => updateSongSlide(activeSlide, { fontSize: Number(event.target.value) })} aria-label="Slide font size" className="h-8 w-16 rounded border border-gray-700 bg-gray-950 px-1 text-[10px] text-gray-200">{[24,28,32,36,40,44,48,52,56,60,64].map(size => <option key={size} value={size}>{size}px</option>)}</select><label className="flex h-8 items-center gap-1 text-[10px] text-gray-400"><input type="checkbox" checked={currentSongSlide.useGlobalStyle} onChange={event => updateSongSlide(activeSlide,{useGlobalStyle:event.target.checked})} className="accent-cyan-500" /> Global output</label><button type="button" onClick={presentActiveSongSlide} disabled={!hasValidDisplay || !songTitle.trim() || !songHtmlToText(currentSongSlide.html).trim()} className="inline-flex h-8 items-center gap-1.5 rounded bg-emerald-700 px-3 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-40"><Play size={13} /> Present selected</button><button type="button" onClick={clearSongOutput} disabled={!isProjecting} className="inline-flex h-8 items-center gap-1 rounded border border-gray-700 px-2 text-xs font-bold text-gray-200 hover:bg-gray-800 disabled:opacity-40"><X size={13} /> Clear</button></div>
+                </section>
               </div>
-              <div className="flex aspect-video min-h-60 flex-col items-center justify-center gap-4 overflow-hidden px-8 text-center rounded-2xl shadow-inner border border-gray-700" style={{ backgroundColor: selectedTheme === 'light' ? '#ffffff' : selectedTheme === 'blue' ? '#1e3a8a' : '#000000', color: selectedTheme === 'light' ? '#000000' : '#ffffff' }}>
-                {songTitle && <div className="text-base font-semibold opacity-70">{songTitle}</div>}
-                <p className="max-w-full whitespace-pre-line break-words text-2xl font-bold leading-tight sm:text-4xl">{currentSongSlide || 'Your current slide will appear here'}</p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  title="Previous slide"
-                  aria-label="Previous slide"
-                  disabled={activeSlide === 0 || songSlides.length === 0}
-                  onClick={() => setActiveSlide(index => Math.max(0, index - 1))}
-                  className="inline-flex items-center gap-2 border border-gray-700 px-4 py-3 text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
-                ><ChevronLeft size={18} /> Previous</button>
-                <button
-                  type="button"
-                  title="Next slide"
-                  aria-label="Next slide"
-                  disabled={activeSlide >= songSlides.length - 1}
-                  onClick={() => setActiveSlide(index => Math.min(songSlides.length - 1, index + 1))}
-                  className="inline-flex items-center gap-2 border border-gray-700 px-4 py-3 text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 rounded-xl"
-                >Next <ChevronRight size={18} /></button>
-              </div>
-
-            </section>
+            </main>
           </div>
+
+          {showOnlineResources && <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/75 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="online-resources-title">
+            <section className="grid max-h-[92vh] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden border border-gray-700 bg-gray-950 shadow-2xl">
+              <header className="flex items-center justify-between border-b border-gray-700 bg-gray-900 px-4 py-3">
+                <div className="flex items-center gap-2.5"><span className="flex h-9 w-9 items-center justify-center rounded bg-cyan-950 text-cyan-300"><Globe size={18} /></span><div><h2 id="online-resources-title" className="text-sm font-bold text-white">Online resources</h2><p className="mt-0.5 text-[10px] text-gray-500">getRhema catalog · internet required</p></div></div>
+                <button type="button" onClick={() => setShowOnlineResources(false)} title="Close online resources" aria-label="Close online resources" className="inline-flex h-9 w-9 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-white"><X size={17} /></button>
+              </header>
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[13rem_minmax(0,1fr)] md:grid-rows-1">
+                <aside className="flex flex-col gap-3 border-b border-gray-800 bg-gray-900 p-3 md:border-b-0 md:border-r" aria-label="Resource types">
+                  <div className="flex gap-2 overflow-x-auto md:flex-col">
+                    <button type="button" onClick={() => { setOnlineResourceType('hymns'); setOnlineResourceSearch(''); setSelectedManualResource(null); }} aria-pressed={onlineResourceType === 'hymns'} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded px-3 text-left text-xs font-bold ${onlineResourceType === 'hymns' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}><Music size={15} /> RCCG Hymn</button>
+                    <button type="button" onClick={() => { setOnlineResourceType('manuals'); setOnlineResourceSearch(''); setSelectedManualResource(null); }} aria-pressed={onlineResourceType === 'manuals'} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded px-3 text-left text-xs font-bold ${onlineResourceType === 'manuals' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}><BookOpen size={15} /> Sunday School Manual</button>
+                  </div>
+                  <div className="hidden flex-1 md:block" />
+                  {onlineResourceType === 'hymns' ? <p className="border-t border-gray-800 pt-3 text-[10px] leading-relaxed text-gray-500">Imported lyrics open in the preview for review before saving.</p> : <p className="border-t border-gray-800 pt-3 text-[10px] leading-relaxed text-gray-500">Manuals and lesson materials open on getRhema for review.</p>}
+                </aside>
+
+                <div className="flex min-h-0 flex-col p-3 sm:p-4">
+                  <label className="relative block shrink-0">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={15} />
+                    <input type="search" value={onlineResourceSearch} onChange={event => setOnlineResourceSearch(event.target.value)} placeholder={onlineResourceType === 'hymns' ? 'Search hymn number or title' : 'Search manual or lesson'} aria-label={onlineResourceType === 'hymns' ? 'Search RCCG hymns' : 'Search Sunday School manuals'} className="h-10 w-full rounded border border-gray-700 bg-gray-900 pl-9 pr-3 text-sm text-white outline-none placeholder:text-gray-500 focus:border-cyan-500" />
+                  </label>
+                  <div className={`mt-2 flex shrink-0 items-center gap-2 border px-3 py-2 text-[10px] ${onlineResourceNetworkStatus === 'offline' ? 'border-rose-900/70 bg-rose-950/30 text-rose-200' : onlineResourceNetworkStatus === 'unavailable' ? 'border-amber-900/70 bg-amber-950/30 text-amber-200' : 'border-gray-800 bg-gray-900 text-gray-400'}`} role="status" aria-live="polite">
+                    {onlineResourceNetworkStatus === 'offline' ? <WifiOff size={13} /> : onlineResourceNetworkStatus === 'checking' ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
+                    <span>{onlineResourceNetworkStatus === 'checking' ? 'Checking internet access…' : onlineResourceNetworkStatus === 'offline' ? 'No internet connection. Connect to the internet to browse resources.' : onlineResourceNetworkStatus === 'unavailable' ? 'Internet access is available, but getRhema could not be reached.' : 'Connected to getRhema.'}</span>
+                  </div>
+                  {selectedManualResource && onlineResourceType === 'manuals' && <div className="mt-3 flex shrink-0 items-center justify-between gap-3 border border-gray-700 bg-gray-900 px-3 py-2.5">
+                    <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{selectedManualResource.title}</p><p className="mt-0.5 line-clamp-2 text-[10px] text-gray-400">{selectedManualResource.detail}</p></div>
+                    <button type="button" onClick={() => openManualResource(selectedManualResource)} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-500"><ExternalLink size={14} /> {selectedManualResource.isLesson ? 'Open lesson' : 'Open manual'}</button>
+                  </div>}
+                  {onlineResourcesError && <p role="alert" className="mt-3 shrink-0 border border-rose-900/70 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">{onlineResourcesError}</p>}
+                  <div className="online-resource-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto border-y border-gray-800" aria-live="polite">
+                    {onlineResourcesLoading ? <div className="space-y-2 p-2" aria-label="Loading resources">
+                      {Array.from({ length: 7 }, (_, index) => <div key={index} className="flex min-h-14 animate-pulse items-center gap-3 border-b border-gray-800 px-3 py-2"><span className="h-7 w-7 rounded-full bg-gray-800" /><span className="flex-1"><span className="block h-3 w-2/5 rounded bg-gray-800" /><span className="mt-2 block h-2.5 w-3/4 rounded bg-gray-800" /></span></div>)}
+                    </div> : onlineResources.map(resource => <div key={resource.id} className="flex min-h-14 items-center border-b border-gray-800 px-2 py-1.5 hover:bg-gray-900">
+                      {onlineResourceType === 'hymns' ? <button type="button" onClick={() => void loadOnlineHymn(resource)} disabled={Boolean(onlineResourceLoadingPath)} title={`Import ${resource.title}`} className="flex min-w-0 flex-1 items-center gap-3 px-1 py-1 text-left disabled:cursor-not-allowed disabled:opacity-45">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-800 text-[10px] font-bold text-gray-300">{resource.number}</span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-100">{resource.title}</span><span className="mt-1 block truncate text-[10px] text-gray-500">{resource.detail}</span></span>
+                        {onlineResourceLoadingPath === resource.path ? <Loader2 size={15} className="animate-spin text-cyan-300" /> : <span className="shrink-0 text-[10px] font-semibold text-cyan-300">Import</span>}
+                      </button> : <button type="button" onClick={() => setSelectedManualResource(resource)} aria-pressed={selectedManualResource?.id === resource.id} className="flex min-w-0 flex-1 items-center gap-3 px-1 py-1 text-left">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gray-800 text-gray-400"><BookOpen size={15} /></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-100">{resource.title}</span><span className="mt-1 block truncate text-[10px] text-gray-500">{resource.detail}</span></span>
+                        <span className="shrink-0 text-[10px] font-semibold text-cyan-300">View</span>
+                      </button>}
+                    </div>)}
+                    {!onlineResourcesLoading && onlineResourceNetworkStatus === 'online' && !onlineResourcesError && onlineResources.length === 0 && <p className="px-4 py-8 text-center text-xs text-gray-500">No matching resources. Try another title.</p>}
+                  </div>
+                  <footer className="flex shrink-0 items-center justify-between gap-3 pt-3 text-[10px] text-gray-500"><span>{onlineResourceType === 'hymns' ? 'Select an item to load its verses into the editor for review.' : 'Select a manual or lesson to open its source page.'}</span><a href={onlineResourceType === 'hymns' ? 'https://getrhema.net/hymns/rccg-the-redeemed-hymnal-4' : 'https://getrhema.net/manuals'} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-cyan-300 hover:text-cyan-200">getRhema <ExternalLink size={11} /></a></footer>
+                </div>
+              </div>
+            </section>
+          </div>}
+
         </div>
       )}
       {practiceMode && presentedVerses.length > 0 && <div className="fixed inset-0 z-[100] bg-black" role="dialog" aria-modal="true" aria-label="Bible projection practice preview"><ProjectionSurface settings={projectionSettings} verses={presentedVerses} className="h-full w-full" /><div className="absolute right-4 top-4 flex items-center gap-3 bg-black/75 px-3 py-2 text-white"><span className="text-xs font-semibold text-emerald-200">Practice preview · not sent to a display</span><button type="button" onClick={() => setPresentedVerses([])} className="min-h-9 border border-white/30 px-3 text-xs font-bold hover:bg-white/10">Close preview</button></div></div>}

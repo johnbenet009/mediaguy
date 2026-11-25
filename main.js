@@ -1627,6 +1627,44 @@ ipcMain.handle('check-internet-connection', async () => {
     return { online: checks.some(check => check.online), checkedAt: Date.now(), checks };
 });
 
+ipcMain.handle('getrhema-resource-page', async (_event, request) => {
+    const type = request?.type === 'manuals' ? 'manuals' : request?.type === 'hymns' ? 'hymns' : null;
+    if (!type) return { ok: false, error: 'Unsupported resource type.' };
+    const query = typeof request.query === 'string' ? request.query.trim().slice(0, 100) : '';
+    const detailPath = typeof request.detailPath === 'string' ? request.detailPath : '';
+    let pathname;
+    if (detailPath) {
+        const validDetail = type === 'hymns'
+            ? /^\/hymns\/rccg-the-redeemed-hymnal-4\/\d+$/.test(detailPath)
+            : /^\/manuals\/[a-z0-9-]+$/.test(detailPath);
+        if (!validDetail) return { ok: false, error: 'Unsupported getRhema page.' };
+        pathname = detailPath;
+    } else if (query) {
+        const searchParams = new URLSearchParams({ q: query });
+        if (type === 'hymns') {
+            searchParams.set('org', 'rccg');
+            searchParams.set('artifactId', 'rccg-the-redeemed-hymnal-4');
+        }
+        pathname = `/${type}/search?${searchParams.toString()}`;
+    } else {
+        pathname = type === 'hymns' ? '/hymns/rccg-the-redeemed-hymnal-4' : '/manuals';
+    }
+    try {
+        const response = await net.fetch(`https://getrhema.net${pathname}`, {
+            headers: { Accept: 'text/html', 'User-Agent': 'MediaGuy-Resources/1.0' },
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) return { ok: false, error: `getRhema returned HTTP ${response.status}.` };
+        if (new URL(response.url).origin !== 'https://getrhema.net') return { ok: false, error: 'The resource redirected to an unsupported host.' };
+        const html = await response.text();
+        if (html.length > 4_000_000) return { ok: false, error: 'The resource page is too large to load.' };
+        return { ok: true, html, url: response.url };
+    } catch (error) {
+        console.error('getRhema resource request failed:', error.message);
+        return { ok: false, error: 'Could not load getRhema. Check your internet connection and try again.' };
+    }
+});
+
 const findChromeExecutable = () => {
         const candidates = process.platform === 'win32'
                 ? [

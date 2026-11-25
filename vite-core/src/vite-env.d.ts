@@ -15,6 +15,7 @@ interface Window {
 		requestStartupDisplay?: () => Promise<{ displayId: number } | null>;
 		onDisplaysChanged?: (callback: (displays: Array<{ id: number; label: string; isPrimary: boolean; isUsedByMainTimer: boolean }>) => void) => () => void;
 		checkInternetConnection?: () => Promise<{ online: boolean; checkedAt: number; checks?: Array<{ endpoint: string; online: boolean; status?: number; error?: string }> }>;
+		getRhemaResourcePage?: (request: { type: 'hymns' | 'manuals'; query?: string; detailPath?: string }) => Promise<{ ok: boolean; html?: string; url?: string; error?: string }>;
 		startChromeSpeechRecognition?: (request: { language: string; deviceLabel: string }) => Promise<{ selectedDevice: string; customTrack: boolean }>;
 		stopChromeSpeechRecognition?: () => Promise<{ ok: boolean }>;
 		openCopilotTokenPage?: () => Promise<void>;

@@ -7,7 +7,7 @@ import { ExtraTimeTimer } from './components/ExtraTimeTimer';
 import { Program, TimerState, ExtraTimeState, Category, RemoteCommand } from './types';
 import { Play, Pause, RefreshCw, AlertTriangle, Clock, Settings, FolderPlus, FileText, HelpCircle, Plus, RotateCcw, Layout, Trash2, X, Minus, Square, Mic, SkipForward, Radio, GripVertical, Camera } from 'lucide-react';
 import { DisplaySettings } from './components/DisplaySettings';
-import { BibleSongsTab, Verse } from './components/BibleSongsTab';
+import { BibleSongsTab, SongSlide, Verse } from './components/BibleSongsTab';
 import { NextProgramNotification } from './components/NextProgramNotification';
 import { AutoRunDisplay } from './components/AutoRunDisplay';
 import { DeleteConfirmation } from './components/DeleteConfirmation';
@@ -275,7 +275,7 @@ function App() {
         const current = localStorage.getItem('bibleProjectionData');
         let projection: Record<string, unknown> = {};
         try { projection = current ? JSON.parse(current) : {}; } catch { /* use a clean projection payload */ }
-        localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], referenceOnly: false, description: '' }));
+        localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], songTitle: '', songText: '', referenceOnly: false, description: '' }));
         window.electronAPI?.openBibleProjection?.(startup.displayId);
         setIsBibleProjected(true);
       } else {
@@ -507,17 +507,13 @@ function App() {
     }
   }, [activeTab]);
 
-  const handleThemeChange = (themeId: string) => {
-    setSelectedTheme(themeId);
-  };
-
   const stopBibleProjection = (retainBackground = false) => {
     if (retainBackground) {
       const current = localStorage.getItem('bibleProjectionData');
       if (current) {
         try {
           const projection = JSON.parse(current);
-          localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], referenceOnly: false, description: '' }));
+          localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], songTitle: '', songText: '', referenceOnly: false, description: '' }));
         } catch { /* ignore invalid projection data */ }
       }
       localStorage.setItem('activeProjection', 'bible');
@@ -550,10 +546,31 @@ function App() {
     const targetIsExternal = availableDisplays.some(display => display.id === selectedProjectDisplay && !display.isPrimary);
     if (selectedProjectDisplay !== null && targetIsExternal && window.electronAPI?.openBibleProjection && (verses.length > 0 || options?.referenceOnly)) {
       localStorage.setItem('activeProjection', 'bible');
-      localStorage.setItem('bibleProjectionData', JSON.stringify({ verses, theme: selectedTheme, referenceOnly: Boolean(options?.referenceOnly), description: options?.description || '' }));
+      localStorage.setItem('bibleProjectionData', JSON.stringify({ verses, songTitle: '', songText: '', theme: selectedTheme, referenceOnly: Boolean(options?.referenceOnly), description: options?.description || '' }));
       window.electronAPI?.openBibleProjection(selectedProjectDisplay);
       setIsBibleProjected(true);
     }
+  };
+
+  const projectSongSlide = (title: string, slide: SongSlide) => {
+    const targetIsExternal = availableDisplays.some(display => display.id === selectedProjectDisplay && !display.isPrimary);
+    if (selectedProjectDisplay !== null && targetIsExternal && window.electronAPI?.openBibleProjection && slide.html.trim()) {
+      localStorage.setItem('activeProjection', 'bible');
+      localStorage.setItem('bibleProjectionData', JSON.stringify({ verses: [], songTitle: title, songText: slide.html, songStyle: slide, theme: selectedTheme, referenceOnly: false, description: '' }));
+      window.electronAPI.openBibleProjection(selectedProjectDisplay);
+      setIsBibleProjected(true);
+    }
+  };
+
+  const clearProjectionContent = () => {
+    const current = localStorage.getItem('bibleProjectionData');
+    if (!current) return;
+    try {
+      const projection = JSON.parse(current);
+      localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], songTitle: '', songText: '', referenceOnly: false, description: '' }));
+      localStorage.setItem('activeProjection', 'bible');
+      setIsBibleProjected(true);
+    } catch { /* ignore invalid projection data */ }
   };
 
   const testBibleDisplay = () => {
@@ -1253,7 +1270,7 @@ function App() {
         if (current) {
           try {
             const projection = JSON.parse(current);
-            localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], referenceOnly: false, description: '' }));
+            localStorage.setItem('bibleProjectionData', JSON.stringify({ ...projection, verses: [], songTitle: '', songText: '', referenceOnly: false, description: '' }));
           } catch { /* ignore invalid projection data */ }
         }
         localStorage.setItem('activeProjection', 'bible');
@@ -1507,7 +1524,7 @@ function App() {
         </div>
       </div>
 
-      <div className={`flex-1 min-h-0 w-full p-2 sm:p-4 ${activeTab === 'bible' || activeTab === 'songs' || activeTab === 'cameras' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className={`flex-1 min-h-0 w-full ${activeTab === 'bible' || activeTab === 'songs' ? 'p-0 overflow-hidden' : activeTab === 'cameras' ? 'p-2 sm:p-4 overflow-hidden' : 'p-2 sm:p-4 overflow-y-auto'}`}>
         <div className={activeTab === 'transcribe' ? 'block h-full' : 'hidden'}>
           <TranscribeTab />
         </div>
@@ -2085,11 +2102,11 @@ function App() {
             onDisplayChange={setSelectedProjectDisplay}
             onRefreshDisplays={refreshProjectDisplays}
             projectBible={projectBibleVerses}
+            projectSong={projectSongSlide}
+            clearProjection={clearProjectionContent}
             testDisplay={testBibleDisplay}
             isProjecting={isBibleProjected}
             onCloseProjection={() => requestBibleExit()}
-            selectedTheme={selectedTheme}
-            onThemeChange={handleThemeChange}
           />
         ) : activeTab === 'guide' ? (
           <div className="mx-auto w-full xl:max-w-[1600px] 2xl:max-w-[1900px]">

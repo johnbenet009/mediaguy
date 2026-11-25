@@ -2,6 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+.projection-global-song,
+.projection-global-song * {
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-style: inherit !important;
+  font-weight: inherit !important;
+  text-decoration: none !important;
+}
+
+.song-slide-editor:empty::before {
+  color: #64748b;
+  content: attr(data-placeholder);
+}
+
+.song-document-editor {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  width: 100%;
+  overflow: auto;
+  padding: 1.5rem;
+  text-align: left;
+}
+
+.song-document-editor:empty::before {
+  color: #64748b;
+  content: attr(data-placeholder);
+}
+
+.song-document-editor [data-song-stanza] {
+  display: block;
+  padding-bottom: 1.4em;
+}
+
+.online-resource-scrollbar {
+  scrollbar-color: #475569 #111827;
+  scrollbar-width: thin;
+}
+
+.online-resource-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.online-resource-scrollbar::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+.online-resource-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+  border: 2px solid #111827;
+  border-radius: 4px;
+}
+
 @keyframes recordingTabFlash {
   0%, 32% { color: #ef4444; opacity: 1; }
   33%, 65% { color: #ffffff; opacity: 1; }

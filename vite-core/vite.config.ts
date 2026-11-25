@@ -10,6 +10,13 @@ export default defineConfig({
   },
   server: {
     force: true,
+    proxy: {
+      '/__rhema': {
+        target: 'https://getrhema.net',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/__rhema/, ''),
+      },
+    },
     hmr: {
       overlay: true
     }

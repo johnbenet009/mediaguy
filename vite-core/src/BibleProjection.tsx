@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Verse } from './components/BibleSongsTab';
+import type { SongSlide, Verse } from './components/BibleSongsTab';
 import { ProjectionSurface } from './components/ProjectionSurface';
 import { useProjectionSettings } from './components/projectionSettings';
 import { useRemoteState } from './remote/useRemoteState';
@@ -7,6 +7,9 @@ import { RemoteCameraVideo } from './remote/RemoteCameraVideo';
 
 interface ProjectionData {
   verses: Verse[];
+  songTitle?: string;
+  songText?: string;
+  songStyle?: SongSlide;
   theme: string;
   referenceOnly?: boolean;
   description?: string;
@@ -80,7 +83,7 @@ export default function BibleProjection() {
   return (
     <div className="fixed inset-0">
       {data.description && <div className="absolute left-0 right-0 top-[5%] z-10 text-center text-[3cqh] font-semibold" style={{ color: settings.textColor }}>{data.description}</div>}
-      <ProjectionSurface settings={settings} verses={data.verses} referenceOnly={data.referenceOnly} backgroundOverlay={cameraOverlay} className="h-full w-full" />
+      <ProjectionSurface settings={settings} verses={data.verses} songText={data.songText} songStyle={data.songStyle} referenceOnly={data.referenceOnly} backgroundOverlay={cameraOverlay} className="h-full w-full" />
     </div>
   );
 }

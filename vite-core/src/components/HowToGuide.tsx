@@ -122,9 +122,9 @@ const guideSections: GuideSection[] = [
       },
       {
         title: 'Prepare song slides',
-        summary: 'Songs are saved locally as editable slides.',
-        steps: ['Choose Songs inside Bible/Songs, then create or select a song.', 'Enter a title and lyrics. Separate slides with a blank line.', 'Choose Save song or Save changes.', 'Use Previous and Next to preview slides.'],
-        note: 'The current Songs view is an editor and preview; it does not send song slides to the projection screen.',
+        summary: 'Build lyrics directly in the slide editor, review the whole deck, and present any slide.',
+        steps: ['Choose Songs inside Bible/Songs, then create a song or select one from the searchable library.', 'Use Online in Song resources to search RCCG Hymns or Sunday School Manuals. Confirm permission before importing hymn lyrics; manuals and lessons open on getRhema.', 'Enter a title and type or paste lyrics directly on the preview. Press Enter twice, or paste stanzas separated by blank lines, to create slides.', 'Select any slide in the deck to edit and preview it. Use the toolbar to format selected text or set slide-wide font, size, weight, and color.', 'Choose Save to store the song. Select an external display, then choose Present on the active slide or its deck thumbnail.', 'Use the arrow keys to select slides, Enter to present, and Escape to clear the output.'],
+        note: 'The global projection style can override the selected slide’s font and color. Song edits are stored locally on this device.',
       },
     ],
   },

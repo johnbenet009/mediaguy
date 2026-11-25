@@ -1,10 +1,18 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Verse } from './BibleSongsTab';
+import type { SongSlide, Verse } from './BibleSongsTab';
 import { projectionFontStack, type ProjectionSettings } from './projectionSettings';
 
 interface ProjectionSurfaceProps {
   settings: ProjectionSettings;
   verses?: Verse[];
+  songText?: string;
+  songStyle?: SongSlide;
+  editableSong?: boolean;
+  songEditorRef?: React.RefObject<HTMLDivElement>;
+  songEditorSyncKey?: string | number;
+  songPlaceholder?: string;
+  onSongHtmlChange?: (html: string, text: string, editor: HTMLDivElement) => void;
+  onSongSelectionChange?: () => void;
   blackout?: boolean;
   referenceOnly?: boolean;
   className?: string;
@@ -12,15 +20,24 @@ interface ProjectionSurfaceProps {
 }
 
 export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
-  settings, verses, blackout = false, referenceOnly = false, className = '', backgroundOverlay,
+  settings, verses, songText, songStyle, editableSong = false, songEditorRef, songEditorSyncKey, songPlaceholder = '', onSongHtmlChange, onSongSelectionChange, blackout = false, referenceOnly = false, className = '', backgroundOverlay,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const backgroundVideoRef = useRef<HTMLVideoElement>(null);
   const [fitScale, setFitScale] = useState(1);
+  const songTextRef = useRef(songText);
+  songTextRef.current = songText;
 
   const verseList = verses || [];
-  const contentKey = verseList.map(v => `${v.book_name}${v.chapter}:${v.verse}`).join('|');
+  const contentKey = `${songEditorSyncKey ?? ''}:${songText || verseList.map(v => `${v.book_name}${v.chapter}:${v.verse}`).join('|')}`;
+
+  useLayoutEffect(() => {
+    if (!editableSong || !songEditorRef?.current) return;
+    const editor = songEditorRef.current;
+    const nextHtml = songTextRef.current || '';
+    if (editor.innerHTML !== nextHtml) editor.innerHTML = nextHtml;
+  }, [editableSong, songEditorRef, songEditorSyncKey]);
 
   useLayoutEffect(() => {
     setFitScale(1);
@@ -29,11 +46,11 @@ export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
   useLayoutEffect(() => {
     const container = containerRef.current;
     const content = contentRef.current;
-    if (!container || !content) return;
+    if (editableSong || !container || !content) return;
     if (content.scrollHeight > container.clientHeight || content.scrollWidth > container.clientWidth) {
       setFitScale(s => Math.max(0.18, s * 0.92));
     }
-  }, [contentKey, fitScale, settings.fontScale, settings.fontFamily, settings.bold, settings.italic, settings.uppercase, settings.lowercase, settings.lineSpacing, settings.showVerseNumbers, settings.showReference, settings.outlineSize, settings.shadowSize, settings.position, settings.referencePosition, settings.referenceFontScale, settings.align]);
+  }, [editableSong, contentKey, fitScale, settings.fontScale, settings.fontFamily, settings.bold, settings.italic, settings.uppercase, settings.lowercase, settings.lineSpacing, settings.showVerseNumbers, settings.showReference, settings.outlineSize, settings.shadowSize, settings.position, settings.referencePosition, settings.referenceFontScale, settings.align]);
 
   useEffect(() => {
     if (settings.backgroundType !== 'camera') return;
@@ -66,7 +83,7 @@ export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
     return <div className={`relative overflow-hidden bg-black ${className}`} />;
   }
 
-  const baseVh = Math.max(2.4, 6.4 - verseList.length * 0.35);
+  const baseVh = songText || editableSong ? 7.2 : Math.max(2.4, 6.4 - verseList.length * 0.35);
   const fontBase = baseVh * (settings.fontScale / 100) * fitScale;
   const justify = settings.position === 'top' ? 'flex-start' : settings.position === 'bottom' ? 'flex-end' : 'center';
   const sidePosition = settings.position === 'left' || settings.position === 'right';
@@ -117,7 +134,9 @@ export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
     padding: settings.referenceBackground === 'color' ? '1.2cqh 2.5cqw' : '0 2.5cqw',
     backgroundColor: settings.referenceBackground === 'color' ? settings.referenceBgColor : 'transparent',
   };
-  const contentStyle: React.CSSProperties = sidePosition
+  const contentStyle: React.CSSProperties = editableSong
+    ? { width: '100%', height: '100%', overflow: 'auto', textAlign: 'left' }
+    : sidePosition
     ? { width: '58%', marginLeft: settings.position === 'left' ? '0' : 'auto', marginRight: settings.position === 'right' ? '0' : 'auto', textAlign: settings.align }
     : { width: '100%', textAlign: settings.align };
 
@@ -148,7 +167,7 @@ export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
         </>
       )}
       {backgroundOverlay}
-      {settings.showReference && reference && (
+      {settings.showReference && reference && !songText && !editableSong && (
         <div style={referenceStyle}>
           {settings.referenceBackground === 'color' && <span className="sr-only">Reference background</span>}
           {referenceText}
@@ -156,7 +175,7 @@ export const ProjectionSurface: React.FC<ProjectionSurfaceProps> = ({
       )}
       <div ref={containerRef} className="absolute inset-0 flex flex-col px-[5%]" style={{ paddingTop, paddingBottom, justifyContent: justify, alignItems: sidePosition ? (settings.position === 'left' ? 'flex-start' : 'flex-end') : 'center' }}>
         <div ref={contentRef} style={contentStyle}>
-          {!referenceOnly && verseList.map(v => (
+          {editableSong ? <div ref={songEditorRef} contentEditable suppressContentEditableWarning onInput={event => { onSongHtmlChange?.(event.currentTarget.innerHTML, event.currentTarget.innerText, event.currentTarget); onSongSelectionChange?.(); }} onMouseUp={onSongSelectionChange} onKeyUp={onSongSelectionChange} data-placeholder={songPlaceholder} aria-label="Edit song lyrics on slide preview" className={`song-document-editor whitespace-pre-line break-words outline-none ${songStyle?.useGlobalStyle !== false ? 'projection-global-song' : ''}`} style={{ ...textStyle, fontFamily: songStyle?.useGlobalStyle === false ? songStyle.fontFamily : textStyle.fontFamily, fontSize: '16px', color: songStyle?.useGlobalStyle === false ? songStyle.color : textStyle.color, fontWeight: songStyle?.useGlobalStyle === false ? (songStyle.bold ? 700 : 400) : 400, fontStyle: songStyle?.useGlobalStyle === false && songStyle.italic ? 'italic' : 'normal', lineHeight: 1.65 }} /> : songText ? <div className={`whitespace-pre-line break-words ${songStyle?.useGlobalStyle !== false ? 'projection-global-song' : ''}`} style={{ ...textStyle, fontFamily: songStyle?.useGlobalStyle === false ? songStyle.fontFamily : textStyle.fontFamily, fontSize: `${fontBase * (songStyle?.useGlobalStyle === false ? songStyle.fontSize / 44 : 1)}cqh`, color: songStyle?.useGlobalStyle === false ? songStyle.color : textStyle.color, fontWeight: songStyle?.useGlobalStyle === false ? (songStyle.bold ? 700 : 400) : textStyle.fontWeight, fontStyle: songStyle?.useGlobalStyle === false && songStyle.italic ? 'italic' : textStyle.fontStyle, margin: '0.6cqh 0' }} dangerouslySetInnerHTML={{ __html: songText }} /> : !referenceOnly && verseList.map(v => (
             <p key={`${v.book}-${v.chapter}-${v.verse}`} className="break-words" style={{ ...textStyle, fontSize: `${fontBase}cqh`, margin: '0.6cqh 0' }}>
               {settings.showVerseNumbers && (
                 <sup style={{ fontSize: '0.45em', opacity: 0.75, marginRight: '0.35em', fontWeight: 700 }}>{v.verse}</sup>

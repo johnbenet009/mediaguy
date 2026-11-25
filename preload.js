@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('displays-changed', listener);
     },
     checkInternetConnection: () => ipcRenderer.invoke('check-internet-connection'),
+    getRhemaResourcePage: (request) => ipcRenderer.invoke('getrhema-resource-page', request),
     startChromeSpeechRecognition: (request) => ipcRenderer.invoke('start-chrome-speech-recognition', request),
     stopChromeSpeechRecognition: () => ipcRenderer.invoke('stop-chrome-speech-recognition'),
     openCopilotTokenPage: () => ipcRenderer.invoke('open-copilot-token-page'),
