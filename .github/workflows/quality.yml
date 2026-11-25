@@ -1,0 +1,108 @@
+name: Quality Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            vite-core/package-lock.json
+
+      - name: Install desktop dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix vite-core --no-audit --no-fund
+
+      - name: Run tests, lint, and typecheck
+        run: npm run check
+
+      - name: Build desktop app assets
+        run: npm run build
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 37
+        shell: pwsh
+        run: sdkmanager "platforms;android-37"
+
+      - name: Configure Android SDK path
+        shell: pwsh
+        run: Set-Content AndroidApp/local.properties "sdk.dir=$($env:ANDROID_HOME -replace '\\','/')"
+
+      - name: Test and build Android companion
+        shell: pwsh
+        run: Push-Location AndroidApp; .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug; Pop-Locationname: Quality Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            vite-core/package-lock.json
+
+      - name: Install desktop dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix vite-core --no-audit --no-fund
+
+      - name: Run tests, lint, and typecheck
+        run: npm run check
+
+      - name: Build desktop app assets
+        run: npm run build
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 37
+        run: sdkmanager "platforms;android-37"
+
+      - name: Configure Android SDK path
+        shell: pwsh
+        run: Set-Content AndroidApp/local.properties "sdk.dir=$($env:ANDROID_HOME -replace '\\','/')"
+
+      - name: Test and build Android companion
+        shell: pwsh
+        run: Push-Location AndroidApp; .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug; Pop-Location

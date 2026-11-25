@@ -1,0 +1,63 @@
+/// <reference types="vite/client" />
+
+interface Window {
+	electronAPI?: {
+		clearCache?: () => Promise<void>;
+		openAdvancedMultiScreen?: () => void;
+		getDisplays?: () => Promise<Array<{ id: number; label: string; isPrimary: boolean; isUsedByMainTimer: boolean }>>;
+		requestStartupDisplay?: () => Promise<{ displayId: number } | null>;
+		onDisplaysChanged?: (callback: (displays: Array<{ id: number; label: string; isPrimary: boolean; isUsedByMainTimer: boolean }>) => void) => () => void;
+		checkInternetConnection?: () => Promise<{ online: boolean; checkedAt: number; checks?: Array<{ endpoint: string; online: boolean; status?: number; error?: string }> }>;
+		startChromeSpeechRecognition?: (request: { language: string; deviceLabel: string }) => Promise<{ selectedDevice: string; customTrack: boolean }>;
+		stopChromeSpeechRecognition?: () => Promise<{ ok: boolean }>;
+		openCopilotTokenPage?: () => Promise<void>;
+		onSpeechRecognitionEvent?: (callback: (event: { type: 'start' | 'end' | 'error' | 'result'; error?: string; finalText?: string; interimText?: string }) => void) => () => void;
+		openBibleProjection?: (displayId: number) => void;
+		closeBibleProjection?: () => void;
+		navigateBibleProjection?: (direction: -1 | 1) => void;
+		onBibleProjectionNavigate?: (callback: (direction: -1 | 1) => void) => () => void;
+		typeBibleProjectionKey?: (key: string) => void;
+		onBibleProjectionKey?: (callback: (key: string) => void) => () => void;
+		onBibleProjectionClosed?: (callback: () => void) => () => void;
+		windowMinimize?: () => void;
+		windowToggleMaximize?: () => void;
+		windowClose?: () => void;
+		windowIsMaximized?: () => Promise<boolean>;
+		closeAllDisplays?: () => void;
+		openTimerDisplay?: (displayId: number) => void;
+		closeTimerDisplay?: () => void;
+		testDisplay?: (displayId: number) => void;
+		getCopilotTokenStatus?: () => Promise<{ configured: boolean; encryptionAvailable: boolean }>;
+		saveCopilotToken?: (token: string) => Promise<{ ok: boolean; error?: string }>;
+		clearCopilotToken?: () => Promise<{ ok: boolean }>;
+		analyzeChurchTranscript?: (request: { transcript: string }) => Promise<{ text: string }>;
+		saveSelectedDisplay?: (displayId: number) => void;
+		dbGet?: (key: string) => Promise<string | null>;
+		dbSet?: (key: string, value: unknown) => Promise<{ ok: boolean; error?: string }>;
+		dbGetAll?: () => Promise<Record<string, unknown>>;
+		remoteStart?: () => Promise<RemoteServerStatus & { ok: boolean; error?: string }>;
+		remoteStop?: () => Promise<RemoteServerStatus & { ok: boolean; error?: string }>;
+		remoteStatus?: () => Promise<RemoteServerStatus>;
+		remoteSetPin?: (pin: string) => Promise<RemoteServerStatus & { ok: boolean; error?: string }>;
+		remoteTunnelStart?: () => Promise<{ ok: boolean; running: boolean; url: string; error: string; accessPin: string }>;
+		remoteTunnelStop?: () => Promise<{ ok: boolean; running: boolean; url: string; error: string; accessPin: string }>;
+		remoteTunnelStatus?: () => Promise<{ running: boolean; url: string; error: string; accessPin: string }>;
+		onRemoteTunnelStatus?: (callback: (status: { running: boolean; url: string; error: string; accessPin: string; stage: string }) => void) => () => void;
+		remotePublish?: (state: Record<string, unknown>) => void;
+		remoteSendSignal?: (target: string, payload: Record<string, unknown>) => void;
+		onRemoteSignal?: (callback: (signal: { from: string; payload: Record<string, unknown> }) => void) => () => void;
+		onRemoteCommand?: (callback: (command: import('./types').RemoteCommand) => void) => () => void;
+		onRemoteClientsChanged?: (callback: (count: number) => void) => () => void;
+		openExternalUrl?: (url: string) => void;
+	};
+}
+
+interface RemoteServerStatus {
+	running: boolean;
+	port: number | null;
+	urls: Array<{ interface: string; address: string; url: string }>;
+	clients: number;
+	pinEnabled: boolean;
+	accessPin?: string;
+	cameraInviteToken?: string;
+}

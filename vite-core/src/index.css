@@ -1,0 +1,327 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes recordingTabFlash {
+  0%, 32% { color: #ef4444; opacity: 1; }
+  33%, 65% { color: #ffffff; opacity: 1; }
+  66%, 99% { color: #ffffff; opacity: 0; }
+  100% { color: #ef4444; opacity: 1; }
+}
+
+.recording-tab-icon {
+  animation: recordingTabFlash 1.8s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-tab-icon {
+    animation: none;
+    color: #ef4444;
+    opacity: 1;
+  }
+}
+
+/* Custom animations for enhanced user experience */
+@keyframes attentionPulse {
+  0%, 100% {
+    transform: scale(1);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  50% {
+    transform: scale(1.05);
+    text-shadow: 0 4px 20px rgba(255,255,255,0.3), 0 2px 10px rgba(0,0,0,0.5);
+  }
+}
+
+@keyframes slideInFromTop {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromTopNotification {
+  0% {
+    transform: translateY(-50px);
+    opacity: 0;
+    scale: 0.9;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes slideOutToTop {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slideInFromBottom {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToBottom {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes flashZoom {
+  0%, 100% {
+    scale: 1;
+    color: #ef4444;
+    text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    scale: 1.15;
+    color: #ff0000;
+    text-shadow: 0 0 40px rgba(255, 0, 0, 0.8);
+  }
+}
+
+.animate-flash-zoom {
+  animation: flashZoom 1s infinite ease-in-out;
+}
+
+@keyframes autoHandoffIn {
+  0% { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes autoHandoffOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+
+.animate-handoff-in {
+  animation: autoHandoffIn 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-handoff-out {
+  animation: autoHandoffOut 850ms ease-in both;
+}
+
+@keyframes nextProgramEnter {
+  0% { opacity: 0; transform: translateY(28px) scale(0.94); }
+  70% { opacity: 1; transform: translateY(-3px) scale(1.015); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-next-program-enter {
+  animation: nextProgramEnter 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-slide-in-bottom {
+  animation: slideInFromBottom 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-out-bottom {
+  animation: slideOutToBottom 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.25s ease-out both;
+}
+
+@keyframes scaleOut {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+}
+
+@keyframes slideIn {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+/* Apply animations */
+.animate-attentionPulse {
+  animation: attentionPulse 2s ease-in-out infinite;
+}
+
+.animate-slideInFromTop {
+  animation: slideInFromTop 0.5s ease-out;
+}
+
+.animate-slideInFromTopNotification {
+  animation: slideInFromTopNotification 0.4s ease-out;
+}
+
+.animate-slideOutToTop {
+  animation: slideOutToTop 0.5s ease-in;
+}
+
+.animate-slideInFromBottom {
+  animation: slideInFromBottom 0.5s ease-out;
+}
+
+.animate-slideOutToBottom {
+  animation: slideOutToBottom 0.5s ease-in;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.5s ease-out;
+}
+
+.animate-scaleOut {
+  animation: scaleOut 0.5s ease-in;
+}
+
+.animate-slideIn {
+  animation: slideIn 5s linear forwards;
+}
+
+/* Splash screen animations */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
+/* Custom scrollbar for How To modal */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #374151;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Touch-friendly range slider styling */
+input.range-knob {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  background: linear-gradient(90deg, rgba(59,130,246,0.3), rgba(59,130,246,0.15));
+  border-radius: 9999px;
+  outline: none;
+  border: 1px solid rgba(75,85,99,0.8);
+}
+input.range-knob:focus {
+  box-shadow: 0 0 0 4px rgba(59,130,246,0.2);
+}
+input.range-knob::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #93c5fd, #3b82f6 60%);
+  border: 3px solid #1e3a8a;
+  box-shadow: 0 6px 14px rgba(30,58,138,0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+  cursor: pointer;
+}
+input.range-knob::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #93c5fd, #3b82f6 60%);
+  border: 3px solid #1e3a8a;
+  box-shadow: 0 6px 14px rgba(30,58,138,0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+  cursor: pointer;
+}
+input.range-knob::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 9999px;
+  background: transparent;
+}
+input.range-knob::-moz-range-track {
+  height: 12px;
+  border-radius: 9999px;
+  background: transparent;
+}
